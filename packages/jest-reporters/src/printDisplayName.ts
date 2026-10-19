@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {Config} from '@jest/types';
 
 export default function printDisplayName(config: Config.ProjectConfig): string {
@@ -16,8 +16,6 @@ export default function printDisplayName(config: Config.ProjectConfig): string {
   }
 
   const {name, color} = displayName;
-  const chosenColor = chalk.reset.inverse[color]
-    ? chalk.reset.inverse[color]
-    : white;
+  const chosenColor = chalk.reset.inverse[color] ?? white;
   return chalk.supportsColor ? chosenColor(` ${name} `) : name;
 }

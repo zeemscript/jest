@@ -248,9 +248,10 @@ Use `describe.each` if you keep duplicating the same test suites with different 
     - `%j` - JSON.
     - `%o` - Object.
     - `%#` - Index of the test case.
+    - `%$` - Number of the test case.
     - `%%` - single percent sign ('%'). This does not consume an argument.
   - Or generate unique test titles by injecting properties of test case object with `$variable`
-    - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
+    - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value` (only works for ["own" properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty), e.g. `$variable.constructor.name` wouldn't work)
     - You can use `$#` to inject the index of the test case
     - You cannot use `$variable` with the `printf` formatting except for `%%`
 - `fn`: `Function` the suite of tests to be run, this is the function that will receive the parameters in each row as function arguments.
@@ -298,13 +299,13 @@ describe.each([
 });
 ```
 
-#### 2. `` describe.each`table`(name, fn, timeout) ``
+#### 2. ``describe.each`table`(name, fn, timeout)``
 
 - `table`: `Tagged Template Literal`
   - First row of variable name column headings separated with `|`
   - One or more subsequent rows of data supplied as template literal expressions using `${value}` syntax.
 - `name`: `String` the title of the test suite, use `$variable` to inject test data into the suite title from the tagged template expressions, and `$#` for the index of the row.
-  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
+  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value` (only works for ["own" properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty), e.g. `$variable.constructor.name` wouldn't work)
 - `fn`: `Function` the suite of tests to be run, this is the function that will receive the test data object.
 - Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. The default timeout is 5 seconds.
 
@@ -355,7 +356,7 @@ describe('my other beverage', () => {
 
 ### `describe.only.each(table)(name, fn)`
 
-Also under the aliases: `fdescribe.each(table)(name, fn)` and `` fdescribe.each`table`(name, fn) ``
+Also under the aliases: `fdescribe.each(table)(name, fn)` and ``fdescribe.each`table`(name, fn)``
 
 Use `describe.only.each` if you want to only run specific tests suites of data driven tests.
 
@@ -379,7 +380,7 @@ test('will not be run', () => {
 });
 ```
 
-#### `` describe.only.each`table`(name, fn) ``
+#### ``describe.only.each`table`(name, fn)``
 
 ```js
 describe.only.each`
@@ -424,7 +425,7 @@ Using `describe.skip` is often a cleaner alternative to temporarily commenting o
 
 ### `describe.skip.each(table)(name, fn)`
 
-Also under the aliases: `xdescribe.each(table)(name, fn)` and `` xdescribe.each`table`(name, fn) ``
+Also under the aliases: `xdescribe.each(table)(name, fn)` and ``xdescribe.each`table`(name, fn)``
 
 Use `describe.skip.each` if you want to stop running a suite of data driven tests.
 
@@ -448,7 +449,7 @@ test('will be run', () => {
 });
 ```
 
-#### `` describe.skip.each`table`(name, fn) ``
+#### ``describe.skip.each`table`(name, fn)``
 
 ```js
 describe.skip.each`
@@ -505,7 +506,7 @@ Also under the alias: `it.concurrent(name, fn, timeout)`
 
 :::caution
 
-`test.concurrent` is considered experimental - see [here](https://github.com/facebook/jest/labels/Area%3A%20Concurrent) for details on missing features and other issues.
+`test.concurrent` is considered experimental - see [here](https://github.com/jestjs/jest/labels/Area%3A%20Concurrent) for details on missing features and other issues.
 
 :::
 
@@ -525,7 +526,7 @@ test.concurrent('subtraction 2 numbers', async () => {
 
 :::tip
 
-Use the [`maxConcurrency`](Configuration.md/#maxconcurrency-number) configuration option to prevent Jest from executing more than the specified amount of tests at the same time.
+Use the [`maxConcurrency`](Configuration.md#maxconcurrency-number) configuration option to prevent Jest from executing more than the specified amount of tests at the same time.
 
 :::
 
@@ -550,6 +551,7 @@ Use `test.concurrent.each` if you keep duplicating the same test with different 
     - `%j` - JSON.
     - `%o` - Object.
     - `%#` - Index of the test case.
+    - `%$` - Number of the test case.
     - `%%` - single percent sign ('%'). This does not consume an argument.
 - `fn`: `Function` the test to be run, this is the function that will receive the parameters in each row as function arguments, **this will have to be an asynchronous function**.
 - Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. The default timeout is 5 seconds.
@@ -566,13 +568,13 @@ test.concurrent.each([
 });
 ```
 
-#### 2. `` test.concurrent.each`table`(name, fn, timeout) ``
+#### 2. ``test.concurrent.each`table`(name, fn, timeout)``
 
 - `table`: `Tagged Template Literal`
   - First row of variable name column headings separated with `|`
   - One or more subsequent rows of data supplied as template literal expressions using `${value}` syntax.
 - `name`: `String` the title of the test, use `$variable` to inject test data into the test title from the tagged template expressions.
-  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
+  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value` (only works for ["own" properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty), e.g. `$variable.constructor.name` wouldn't work)
 - `fn`: `Function` the test to be run, this is the function that will receive the test data object, **this will have to be an asynchronous function**.
 - Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. The default timeout is 5 seconds.
 
@@ -613,7 +615,7 @@ test('will not be run', () => {
 });
 ```
 
-#### `` test.only.each`table`(name, fn) ``
+#### ``test.only.each`table`(name, fn)``
 
 ```js
 test.concurrent.only.each`
@@ -654,7 +656,7 @@ test('will be run', () => {
 });
 ```
 
-#### `` test.concurrent.skip.each`table`(name, fn) ``
+#### ``test.concurrent.skip.each`table`(name, fn)``
 
 ```js
 test.concurrent.skip.each`
@@ -673,7 +675,7 @@ test('will be run', () => {
 
 ### `test.each(table)(name, fn, timeout)`
 
-Also under the alias: `it.each(table)(name, fn)` and `` it.each`table`(name, fn) ``
+Also under the alias: `it.each(table)(name, fn)` and ``it.each`table`(name, fn)``
 
 Use `test.each` if you keep duplicating the same test with different data. `test.each` allows you to write the test once and pass data in.
 
@@ -692,9 +694,10 @@ Use `test.each` if you keep duplicating the same test with different data. `test
     - `%j` - JSON.
     - `%o` - Object.
     - `%#` - Index of the test case.
+    - `%$` - Number of the test case.
     - `%%` - single percent sign ('%'). This does not consume an argument.
   - Or generate unique test titles by injecting properties of test case object with `$variable`
-    - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
+    - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value` (only works for ["own" properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty), e.g. `$variable.constructor.name` wouldn't work)
     - You can use `$#` to inject the index of the test case
     - You cannot use `$variable` with the `printf` formatting except for `%%`
 - `fn`: `Function` the test to be run, this is the function that will receive the parameters in each row as function arguments.
@@ -722,13 +725,13 @@ test.each([
 });
 ```
 
-#### 2. `` test.each`table`(name, fn, timeout) ``
+#### 2. ``test.each`table`(name, fn, timeout)``
 
 - `table`: `Tagged Template Literal`
   - First row of variable name column headings separated with `|`
   - One or more subsequent rows of data supplied as template literal expressions using `${value}` syntax.
 - `name`: `String` the title of the test, use `$variable` to inject test data into the test title from the tagged template expressions.
-  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
+  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value` (only works for ["own" properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwnProperty), e.g. `$variable.constructor.name` wouldn't work)
 - `fn`: `Function` the test to be run, this is the function that will receive the test data object.
 - Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. The default timeout is 5 seconds.
 
@@ -751,7 +754,7 @@ Also under the alias: `it.failing(name, fn, timeout)`
 
 :::note
 
-This is only available with the default [jest-circus](https://github.com/facebook/jest/tree/main/packages/jest-circus) runner.
+This is only available with the default [jest-circus](https://github.com/jestjs/jest/tree/main/packages/jest-circus) runner.
 
 :::
 
@@ -779,11 +782,11 @@ test.failing('it is equal', () => {
 
 ### `test.failing.each(name, fn, timeout)`
 
-Also under the alias: `it.failing.each(table)(name, fn)` and `` it.failing.each`table`(name, fn) ``
+Also under the alias: `it.failing.each(table)(name, fn)` and ``it.failing.each`table`(name, fn)``
 
 :::note
 
-This is only available with the default [jest-circus](https://github.com/facebook/jest/tree/main/packages/jest-circus) runner.
+This is only available with the default [jest-circus](https://github.com/jestjs/jest/tree/main/packages/jest-circus) runner.
 
 :::
 
@@ -807,7 +810,7 @@ Also under the aliases: `it.only.failing(name, fn, timeout)`, `fit.failing(name,
 
 :::note
 
-This is only available with the default [jest-circus](https://github.com/facebook/jest/tree/main/packages/jest-circus) runner.
+This is only available with the default [jest-circus](https://github.com/jestjs/jest/tree/main/packages/jest-circus) runner.
 
 :::
 
@@ -819,7 +822,7 @@ Also under the aliases: `it.skip.failing(name, fn, timeout)`, `xit.failing(name,
 
 :::note
 
-This is only available with the default [jest-circus](https://github.com/facebook/jest/tree/main/packages/jest-circus) runner.
+This is only available with the default [jest-circus](https://github.com/jestjs/jest/tree/main/packages/jest-circus) runner.
 
 :::
 
@@ -851,7 +854,7 @@ Usually you wouldn't check code using `test.only` into source control - you woul
 
 ### `test.only.each(table)(name, fn)`
 
-Also under the aliases: `it.only.each(table)(name, fn)`, `fit.each(table)(name, fn)`, `` it.only.each`table`(name, fn) `` and `` fit.each`table`(name, fn) ``
+Also under the aliases: `it.only.each(table)(name, fn)`, `fit.each(table)(name, fn)`, ``it.only.each`table`(name, fn)`` and ``fit.each`table`(name, fn)``
 
 Use `test.only.each` if you want to only run specific tests with different test data.
 
@@ -873,7 +876,7 @@ test('will not be run', () => {
 });
 ```
 
-#### `` test.only.each`table`(name, fn) ``
+#### ``test.only.each`table`(name, fn)``
 
 ```js
 test.only.each`
@@ -914,7 +917,7 @@ You could comment the test out, but it's often a bit nicer to use `test.skip` be
 
 ### `test.skip.each(table)(name, fn)`
 
-Also under the aliases: `it.skip.each(table)(name, fn)`, `xit.each(table)(name, fn)`, `xtest.each(table)(name, fn)`, `` it.skip.each`table`(name, fn) ``, `` xit.each`table`(name, fn) `` and `` xtest.each`table`(name, fn) ``
+Also under the aliases: `it.skip.each(table)(name, fn)`, `xit.each(table)(name, fn)`, `xtest.each(table)(name, fn)`, ``it.skip.each`table`(name, fn)``, ``xit.each`table`(name, fn)`` and ``xtest.each`table`(name, fn)``
 
 Use `test.skip.each` if you want to stop running a collection of data driven tests.
 
@@ -936,7 +939,7 @@ test('will be run', () => {
 });
 ```
 
-#### `` test.skip.each`table`(name, fn) ``
+#### ``test.skip.each`table`(name, fn)``
 
 ```js
 test.skip.each`
@@ -1050,7 +1053,7 @@ test.each(table)('table as a variable example', (a, b, expected, extra) => {
 
 #### Template literal
 
-If all values are of the same type, the template literal API will type the arguments correctly:
+If all input values are of the same type, the template literal API will type the arguments correctly:
 
 ```ts
 import {test} from '@jest/globals';
@@ -1060,12 +1063,27 @@ test.each`
   ${1} | ${2} | ${3}
   ${3} | ${4} | ${7}
   ${5} | ${6} | ${11}
-`('template literal example', ({a, b, expected}) => {
-  // all arguments are of type `number`
+`('template literal example same type', ({a, b, expected}) => {
+  // all arguments are of type `number` because all inputs (a, b, expected) are of type `number`
 });
 ```
 
-Otherwise it will require a generic type argument:
+If the inputs have different types, the arguments will be typed as a union of all the input types (i.e. type of the variables inside the template literal):
+
+```ts
+import {test} from '@jest/globals';
+
+test.each`
+  a    | b    | expected
+  ${1} | ${2} | ${'three'}
+  ${3} | ${4} | ${'seven'}
+  ${5} | ${6} | ${'eleven'}
+`('template literal example different types', ({a, b, expected}) => {
+  // all arguments are of type `number | string` because some inputs (a, b) are of type `number` and some others (expected) are of type `string`
+});
+```
+
+Otherwise, if you want each argument to have the right type, you have to explicitly provide the generic type argument:
 
 ```ts
 import {test} from '@jest/globals';
@@ -1076,6 +1094,26 @@ test.each<{a: number; b: number; expected: string; extra?: boolean}>`
   ${3} | ${4} | ${'seven'}  | ${false}
   ${5} | ${6} | ${'eleven'}
 `('template literal example', ({a, b, expected, extra}) => {
-  // without the generic argument in this case types would default to `unknown`
+  // all arguments are typed as expected, e.g. `a: number`, `expected: string`, `extra: boolean | undefined`
 });
 ```
+
+:::caution
+
+Keep in mind the variables inside the template literal are not type checked, so you have to ensure that their types are correct.
+
+```ts
+import {test} from '@jest/globals';
+
+test.each<{a: number; expected: string}>`
+  a                            | expected
+  ${1}                         | ${'one'}
+  ${'will not raise TS error'} | ${'two'}
+  ${3}                         | ${'three'}
+`('template literal with wrongly typed input', ({a, expected}) => {
+  // all arguments are typed as stated in the generic: `a: number`, `expected: string`
+  // WARNING: `a` is of type `number` but will be a string in the 2nd test case.
+});
+```
+
+:::

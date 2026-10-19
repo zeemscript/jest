@@ -40,7 +40,7 @@ describe('Runtime require.resolve', () => {
     await fs.writeFile(
       absoluteFilePath,
       'module.exports = require.resolve(__filename);',
-      'utf-8',
+      'utf8',
     );
 
     const runtime = await createRuntime(__filename);
@@ -66,14 +66,28 @@ describe('Runtime require.resolve', () => {
       `module.exports = require.resolve(${JSON.stringify(
         target,
       )}, {paths: []});`,
-      'utf-8',
+      'utf8',
     );
 
-    await fs.writeFile(target, 'module.exports = {}', 'utf-8');
+    await fs.writeFile(target, 'module.exports = {}', 'utf8');
 
     const runtime = await createRuntime(__filename);
     const resolved = runtime.requireModule(runtime.__mockRootPath, entrypoint);
     expect(resolved).toEqual(require.resolve(target, {paths: []}));
+  });
+
+  it('resolves a builtin to the specifier it was asked for', async () => {
+    // Node echoes the spelling back rather than normalizing either way, so
+    // `require.resolve` must not canonicalize core specifiers.
+    const runtime = await createRuntime(__filename);
+    const resolved = runtime.requireModule<{bare: string; prefixed: string}>(
+      runtime.__mockRootPath,
+      './resolve_core.js',
+    );
+    expect(resolved.bare).toBe(require.resolve('fs'));
+    expect(resolved.prefixed).toBe(require.resolve('node:fs'));
+    expect(resolved.bare).toBe('fs');
+    expect(resolved.prefixed).toBe('node:fs');
   });
 
   it('resolves a module path with moduleNameMapper', async () => {
@@ -94,7 +108,7 @@ describe('Runtime require.resolve', () => {
   describe('with the jest-resolve-outside-vm-option', () => {
     it('forwards to the real Node require in an internal context', async () => {
       const runtime = await createRuntime(__filename);
-      const module = runtime.requireInternalModule(
+      const module = runtime.requireInternalModule<{required: unknown}>(
         runtime.__mockRootPath,
         './resolve_and_require_outside.js',
       );
@@ -105,7 +119,7 @@ describe('Runtime require.resolve', () => {
 
     it('ignores the option in an external context', async () => {
       const runtime = await createRuntime(__filename);
-      const module = runtime.requireModule(
+      const module = runtime.requireModule<{required: {foo: string}}>(
         runtime.__mockRootPath,
         './resolve_and_require_outside.js',
       );

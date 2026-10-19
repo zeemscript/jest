@@ -8,6 +8,7 @@
 
 import {
   equals,
+  getObjectKeys,
   isA,
   iterableEquality,
   subsetEquality,
@@ -40,19 +41,10 @@ const utils = Object.freeze({
   subsetEquality,
 });
 
-function getPrototype(obj: object) {
-  if (Object.getPrototypeOf) {
-    return Object.getPrototypeOf(obj);
-  }
-
-  if (obj.constructor.prototype == obj) {
-    return null;
-  }
-
-  return obj.constructor.prototype;
-}
-
-export function hasProperty(obj: object | null, property: string): boolean {
+export function hasProperty(
+  obj: object | null,
+  property: string | symbol,
+): boolean {
   if (!obj) {
     return false;
   }
@@ -61,15 +53,18 @@ export function hasProperty(obj: object | null, property: string): boolean {
     return true;
   }
 
-  return hasProperty(getPrototype(obj), property);
+  return hasProperty(Object.getPrototypeOf(obj), property);
 }
 
-export abstract class AsymmetricMatcher<T>
-  implements AsymmetricMatcherInterface
-{
+export abstract class AsymmetricMatcher<
+  T,
+> implements AsymmetricMatcherInterface {
   $$typeof = Symbol.for('jest.asymmetricMatcher');
 
-  constructor(protected sample: T, protected inverse = false) {}
+  constructor(
+    protected sample: T,
+    protected inverse = false,
+  ) {}
 
   protected getMatcherContext(): MatcherContext {
     return {
@@ -91,7 +86,7 @@ export abstract class AsymmetricMatcher<T>
 
 class Any extends AsymmetricMatcher<any> {
   constructor(sample: unknown) {
-    if (typeof sample === 'undefined') {
+    if (sample === undefined) {
       throw new TypeError(
         'any() expects to be passed a constructor function. ' +
           'Please pass one or use anything() to match any object.',
@@ -101,32 +96,42 @@ class Any extends AsymmetricMatcher<any> {
   }
 
   asymmetricMatch(other: unknown) {
-    if (this.sample == String) {
-      return typeof other == 'string' || other instanceof String;
+    if (this.sample === String) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'string' || other instanceof String;
     }
 
-    if (this.sample == Number) {
-      return typeof other == 'number' || other instanceof Number;
+    if (this.sample === Number) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'number' || other instanceof Number;
     }
 
-    if (this.sample == Function) {
-      return typeof other == 'function' || other instanceof Function;
+    if (this.sample === Function) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'function' || other instanceof Function;
     }
 
-    if (this.sample == Boolean) {
-      return typeof other == 'boolean' || other instanceof Boolean;
+    if (this.sample === Boolean) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'boolean' || other instanceof Boolean;
     }
 
-    if (this.sample == BigInt) {
-      return typeof other == 'bigint' || other instanceof BigInt;
+    if (this.sample === BigInt) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'bigint' || other instanceof BigInt;
     }
 
-    if (this.sample == Symbol) {
-      return typeof other == 'symbol' || other instanceof Symbol;
+    if (this.sample === Symbol) {
+      // eslint-disable-next-line unicorn/no-instanceof-builtins
+      return typeof other === 'symbol' || other instanceof Symbol;
     }
 
-    if (this.sample == Object) {
-      return typeof other == 'object';
+    if (this.sample === Object) {
+      return typeof other === 'object';
+    }
+
+    if (this.sample === Array) {
+      return Array.isArray(other);
     }
 
     return other instanceof this.sample;
@@ -137,24 +142,28 @@ class Any extends AsymmetricMatcher<any> {
   }
 
   override getExpectedType() {
-    if (this.sample == String) {
+    if (this.sample === String) {
       return 'string';
     }
 
-    if (this.sample == Number) {
+    if (this.sample === Number) {
       return 'number';
     }
 
-    if (this.sample == Function) {
+    if (this.sample === Function) {
       return 'function';
     }
 
-    if (this.sample == Object) {
+    if (this.sample === Object) {
       return 'object';
     }
 
-    if (this.sample == Boolean) {
+    if (this.sample === Boolean) {
       return 'boolean';
+    }
+
+    if (this.sample === Array) {
+      return 'array';
     }
 
     return fnNameFor(this.sample);
@@ -188,7 +197,7 @@ class ArrayContaining extends AsymmetricMatcher<Array<unknown>> {
 
   asymmetricMatch(other: unknown) {
     if (!Array.isArray(this.sample)) {
-      throw new Error(
+      throw new TypeError(
         `You must provide an array to ${this.toString()}, not '${typeof this
           .sample}'.`,
       );
@@ -216,30 +225,60 @@ class ArrayContaining extends AsymmetricMatcher<Array<unknown>> {
   }
 }
 
-class ObjectContaining extends AsymmetricMatcher<Record<string, unknown>> {
-  constructor(sample: Record<string, unknown>, inverse = false) {
+class ArrayOf extends AsymmetricMatcher<unknown> {
+  asymmetricMatch(other: unknown) {
+    const matcherContext = this.getMatcherContext();
+    const result =
+      Array.isArray(other) &&
+      other.every(item =>
+        equals(this.sample, item, matcherContext.customTesters),
+      );
+
+    return this.inverse ? !result : result;
+  }
+
+  toString() {
+    return `${this.inverse ? 'Not' : ''}ArrayOf`;
+  }
+
+  override getExpectedType() {
+    return 'array';
+  }
+}
+
+class ObjectContaining extends AsymmetricMatcher<
+  Record<string | symbol, unknown>
+> {
+  constructor(sample: Record<string | symbol, unknown>, inverse = false) {
     super(sample, inverse);
   }
 
   asymmetricMatch(other: any) {
+    // Ensures that the argument passed to the objectContaining method is an object
     if (typeof this.sample !== 'object') {
-      throw new Error(
+      throw new TypeError(
         `You must provide an object to ${this.toString()}, not '${typeof this
           .sample}'.`,
       );
     }
 
+    // Ensures that the argument passed to the expect function is an object
+    // This is necessary to avoid matching of non-object values
+    // Arrays are a special type of object, but having a valid match with a standard object
+    // does not make sense, hence we do a simple array check
+    if (typeof other !== 'object' || Array.isArray(other)) {
+      return false;
+    }
+
     let result = true;
 
     const matcherContext = this.getMatcherContext();
-    for (const property in this.sample) {
+    const objectKeys = getObjectKeys(this.sample);
+
+    for (const key of objectKeys) {
       if (
-        !hasProperty(other, property) ||
-        !equals(
-          this.sample[property],
-          other[property],
-          matcherContext.customTesters,
-        )
+        !hasProperty(other, key) ||
+        !equals(this.sample[key], other[key], matcherContext.customTesters)
       ) {
         result = false;
         break;
@@ -325,10 +364,16 @@ class CloseTo extends AsymmetricMatcher<number> {
     if (!isA<number>('Number', other)) {
       return false;
     }
-    let result = false;
-    if (other === Infinity && this.sample === Infinity) {
+    let result: boolean;
+    if (
+      other === Number.POSITIVE_INFINITY &&
+      this.sample === Number.POSITIVE_INFINITY
+    ) {
       result = true; // Infinity - Infinity is NaN
-    } else if (other === -Infinity && this.sample === -Infinity) {
+    } else if (
+      other === Number.NEGATIVE_INFINITY &&
+      this.sample === Number.NEGATIVE_INFINITY
+    ) {
       result = true; // -Infinity - -Infinity is NaN
     } else {
       result =
@@ -360,6 +405,9 @@ export const arrayContaining = (sample: Array<unknown>): ArrayContaining =>
   new ArrayContaining(sample);
 export const arrayNotContaining = (sample: Array<unknown>): ArrayContaining =>
   new ArrayContaining(sample, true);
+export const arrayOf = (sample: unknown): ArrayOf => new ArrayOf(sample);
+export const notArrayOf = (sample: unknown): ArrayOf =>
+  new ArrayOf(sample, true);
 export const objectContaining = (
   sample: Record<string, unknown>,
 ): ObjectContaining => new ObjectContaining(sample);

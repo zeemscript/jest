@@ -19,7 +19,7 @@ afterEach(() => cleanup(DIR));
 
 test("--listTests doesn't duplicate the test files", () => {
   writeFiles(DIR, {
-    '.watchmanconfig': '',
+    '.watchmanconfig': '{}',
     '/project1.js': "module.exports = {rootDir: './', displayName: 'BACKEND'}",
     '/project2.js': "module.exports = {rootDir: './', displayName: 'BACKEND'}",
     '__tests__/inBothProjectsTest.js': "test('test', () => {});",
@@ -35,7 +35,7 @@ test("--listTests doesn't duplicate the test files", () => {
 
 test('can pass projects or global config', () => {
   writeFiles(DIR, {
-    '.watchmanconfig': '',
+    '.watchmanconfig': '{}',
     'base_config.js': `
       module.exports = {
         haste: {
@@ -132,7 +132,7 @@ test('can pass projects or global config', () => {
 
 test('"No tests found" message for projects', () => {
   writeFiles(DIR, {
-    '.watchmanconfig': '',
+    '.watchmanconfig': '{}',
     'package.json': '{}',
     'project1/__tests__/file1.test.js': `
       const file1 = require('../file1');
@@ -336,7 +336,7 @@ test('allows a single project', () => {
 
 test('resolves projects and their <rootDir> properly', () => {
   writeFiles(DIR, {
-    '.watchmanconfig': '',
+    '.watchmanconfig': '{}',
     'package.json': JSON.stringify({
       jest: {
         projects: [
@@ -360,7 +360,7 @@ test('resolves projects and their <rootDir> properly', () => {
     'project2/project2.conf.json': JSON.stringify({
       id: 'project2',
       rootDir: '../', // root dir is set to the top level
-      setupFiles: ['<rootDir>/project2/project2_setup.js'], // rootDir shold be of the
+      setupFiles: ['<rootDir>/project2/project2_setup.js'], // rootDir should be of the
       testEnvironment: 'node',
       testPathIgnorePatterns: ['project1'],
     }),
@@ -436,7 +436,7 @@ test('resolves projects and their <rootDir> properly', () => {
 
 test('Does transform files with the corresponding project transformer', () => {
   writeFiles(DIR, {
-    '.watchmanconfig': '',
+    '.watchmanconfig': '{}',
     'file.js': SAMPLE_FILE_CONTENT,
     'package.json': '{}',
     'project1/__tests__/project1.test.js': `
@@ -487,7 +487,7 @@ test('Does transform files with the corresponding project transformer', () => {
 describe("doesn't bleed module file extensions resolution with multiple workers", () => {
   test('external config files', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       'file.js': 'module.exports = "file1"',
       'file.p2.js': 'module.exports = "file2"',
       'package.json': '{}',
@@ -537,7 +537,7 @@ describe("doesn't bleed module file extensions resolution with multiple workers"
 
   test('inline config files', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       'file.js': 'module.exports = "file1"',
       'file.p2.js': 'module.exports = "file2"',
       'package.json': JSON.stringify({
@@ -609,4 +609,129 @@ describe('Babel config in individual project works in multi-project', () => {
     expect(result.stderr).toMatch('PASS prj-3/src/index.test.js');
     expect(result.exitCode).toBe(0);
   });
+});
+
+test('uses --config for the global config when multiple projects are specified', () => {
+  writeFiles(DIR, {
+    'global.config.js': `
+      module.exports = {testTimeout: 30000};
+    `,
+    'p1/jest.config.js': 'module.exports = {};',
+    'p1/some.test.js': "test('a', () => expect(1).toBe(1));",
+    'p2/jest.config.js': 'module.exports = {};',
+    'p2/other.test.js': "test('b', () => expect(1).toBe(1));",
+    'package.json': '{}',
+  });
+
+  const {stdout, exitCode} = runJest(DIR, [
+    '--projects',
+    'p1',
+    'p2',
+    '-c',
+    'global.config.js',
+    '--showConfig',
+  ]);
+
+  expect(exitCode).toBe(0);
+  const {globalConfig} = JSON.parse(stdout);
+  expect(globalConfig.testTimeout).toBe(30_000);
+});
+
+test('errors on a missing --config when multiple projects are specified', () => {
+  writeFiles(DIR, {
+    'p1/jest.config.js': 'module.exports = {};',
+    'p1/some.test.js': "test('a', () => expect(1).toBe(1));",
+    'p2/jest.config.js': 'module.exports = {};',
+    'p2/other.test.js': "test('b', () => expect(1).toBe(1));",
+    'package.json': '{}',
+  });
+
+  const {stderr, exitCode} = runJest(DIR, [
+    '--projects',
+    'p1',
+    'p2',
+    '-c',
+    'does-not-exist.config.js',
+    '--listTests',
+  ]);
+
+  expect(exitCode).toBe(1);
+  expect(stderr).toContain(
+    "Can't find a root directory while resolving a config file path.",
+  );
+  expect(stderr).toContain(
+    'Provided path to resolve: does-not-exist.config.js',
+  );
+});
+
+test('does not warn about global options in the root config a project resolves to', () => {
+  writeFiles(DIR, {
+    'jest.config.js': `
+      module.exports = {
+        bail: 1,
+        passWithNoTests: true,
+        projects: ['<rootDir>/p1', '<rootDir>/p2'],
+      };
+    `,
+    'p1/some.test.js': "test('a', () => expect(1).toBe(1));",
+    'p2/jest.config.js': "module.exports = {displayName: 'p2'};",
+    'p2/other.test.js': "test('b', () => expect(1).toBe(1));",
+    'package.json': '{}',
+  });
+
+  const {stderr, exitCode} = runJest(DIR, ['--no-watchman']);
+
+  expect(exitCode).toBe(0);
+  expect(stderr).not.toContain(
+    'is not supported in an individual project configuration',
+  );
+});
+
+test('only warns about global options in projects that do not supply the global config', () => {
+  writeFiles(DIR, {
+    'p1/jest.config.js': 'module.exports = {testFailureExitCode: 7};',
+    'p1/some.test.js': "test('a', () => expect(1).toBe(2));",
+    'p2/jest.config.js': 'module.exports = {testFailureExitCode: 7};',
+    'p2/other.test.js': "test('b', () => expect(1).toBe(1));",
+    'package.json': '{}',
+  });
+
+  const {stderr, exitCode} = runJest(DIR, [
+    '--no-watchman',
+    '--projects',
+    'p1',
+    'p2',
+  ]);
+
+  // the first project doubles as the global config, so its options do apply
+  expect(exitCode).toBe(7);
+  expect(
+    stderr.match(/Option "testFailureExitCode" is not supported/g),
+  ).toHaveLength(1);
+});
+
+test('warns about global options in a project that lives next to the global config', () => {
+  writeFiles(DIR, {
+    'global.config.js': 'module.exports = {};',
+    'jest.config.js': 'module.exports = {testFailureExitCode: 7};',
+    'p2/jest.config.js': "module.exports = {displayName: 'p2'};",
+    'p2/other.test.js': "test('b', () => expect(1).toBe(1));",
+    'package.json': '{}',
+    'some.test.js': "test('a', () => expect(1).toBe(2));",
+  });
+
+  const {stderr, exitCode} = runJest(DIR, [
+    '--no-watchman',
+    '--config',
+    'global.config.js',
+    '--projects',
+    '.',
+    'p2',
+  ]);
+
+  // the global config comes from `--config`, so the one in the cwd is a project
+  expect(exitCode).toBe(1);
+  expect(stderr).toContain(
+    'Option "testFailureExitCode" is not supported in an individual project configuration',
+  );
 });

@@ -1,8 +1,6 @@
 ---
 title: Supporting Jest Open Source
-author: Rick Hanlon II
-authorURL: https://twitter.com/rickhanlonii
-authorFBID: 160800566
+authors: rickhanlonii
 ---
 
 Jest is maintained by a community of open source contributors and Facebook employees.
@@ -45,7 +43,7 @@ There are two levels of support for the collective: Backer and Sponsor.
 
 #### Backers
 
-Backers of the collective are individuals contributing at least \$2/month. We'll include a list of backers on the Jest homepage, README on github/yarn/npm, and Contributors page.
+Backers of the collective are individuals contributing at least $2/month. We'll include a list of backers on the Jest homepage, README on github/yarn/npm, and Contributors page.
 
 #### Sponsors
 

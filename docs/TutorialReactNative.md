@@ -5,28 +5,32 @@ title: Testing React Native Apps
 
 At Facebook, we use Jest to test [React Native](https://reactnative.dev/) applications.
 
-Get a deeper insight into testing a working React Native app example by reading the following series: [Part 1: Jest – Snapshot come into play](https://callstack.com/blog/testing-react-native-with-the-new-jest-part-1-snapshots-come-into-play/) and [Part 2: Jest – Redux Snapshots for your Actions and Reducers](https://callstack.com/blog/testing-react-native-with-the-new-jest-part-2-redux-snapshots-for-your-actions-and-reducers/).
+Get a deeper insight into testing a working React Native app example by reading the following series:
+
+- [Part 1: Jest – Snapshot come into play](https://callstack.com/blog/testing-react-native-with-the-new-jest-part-1-snapshots-come-into-play/)
+- [Part 2: Jest – Redux Snapshots for your Actions and Reducers](https://callstack.com/blog/testing-react-native-with-the-new-jest-part-2-redux-snapshots-for-your-actions-and-reducers/).
 
 ## Setup
 
-Starting from react-native version 0.38, a Jest setup is included by default when running `react-native init`. The following configuration should be automatically added to your package.json file:
+Starting from react-native version 0.38, a Jest setup is included by default when running `npx @react-native-community/cli init`. The following configuration should be automatically added to your React Native's `jest.config.js` file:
 
-```json
-{
-  "scripts": {
-    "test": "jest"
-  },
-  "jest": {
-    "preset": "react-native"
-  }
-}
+```js
+module.exports = {
+  preset: 'react-native',
+};
 ```
 
 Run `yarn test` to run tests with Jest.
 
 :::tip
 
-If you are upgrading your react-native application and previously used the `jest-react-native` preset, remove the dependency from your `package.json` file and change the preset to `react-native` instead.
+If you are upgrading your react-native application and previously used the `jest-react-native` or `react-native` preset, remove the dependency from your `package.json` file and change the preset to `react-native` in `jest.config.js` instead.
+
+:::
+
+:::note
+
+Recent versions of React Native moved the preset into its own package, `@react-native/jest-preset`. If your `jest.config.js` still points to `preset: 'react-native'` and Jest fails to resolve it, install `@react-native/jest-preset` and change the preset to `@react-native/jest-preset` instead.
 
 :::
 
@@ -73,16 +77,20 @@ const styles = StyleSheet.create({
 export default Intro;
 ```
 
-Now let's use React's test renderer and Jest's snapshot feature to interact with the component and capture the rendered output and create a snapshot file:
+Now let's use [`@testing-library/react-native`](https://callstack.github.io/react-native-testing-library/) and Jest's snapshot feature to render the component and capture the rendered output as a snapshot file. `@testing-library/react-native` replaces the now-[deprecated](https://react.dev/warnings/react-test-renderer) `react-test-renderer`, and needs `test-renderer` installed alongside it as a peer dependency:
+
+```bash
+yarn add --dev @testing-library/react-native test-renderer
+```
 
 ```tsx title="__tests__/Intro-test.js"
+import {render, screen} from '@testing-library/react-native';
 import React from 'react';
-import renderer from 'react-test-renderer';
 import Intro from '../Intro';
 
-test('renders correctly', () => {
-  const tree = renderer.create(<Intro />).toJSON();
-  expect(tree).toMatchSnapshot();
+test('renders correctly', async () => {
+  await render(<Intro />);
+  expect(screen.toJSON()).toMatchSnapshot();
 });
 ```
 
@@ -125,7 +133,7 @@ exports[`Intro renders correctly 1`] = `
 
 The next time you run the tests, the rendered output will be compared to the previously created snapshot. The snapshot should be committed along with code changes. When a snapshot test fails, you need to inspect whether it is an intended or unintended change. If the change is expected you can invoke Jest with `jest -u` to overwrite the existing snapshot.
 
-The code for this example is available at [examples/react-native](https://github.com/facebook/jest/tree/main/examples/react-native).
+The code for this example is available at [examples/react-native](https://github.com/jestjs/jest/tree/main/examples/react-native).
 
 ## Preset configuration
 
@@ -133,7 +141,7 @@ The preset sets up the environment and is very opinionated and based on what we 
 
 ### Environment
 
-`react-native` ships with a Jest preset, so the `jest.preset` field of your `package.json` should point to `react-native`. The preset is a node environment that mimics the environment of a React Native app. Because it doesn't load any DOM or browser APIs, it greatly improves Jest's startup time.
+`react-native` ships with a Jest preset, so the `preset` field of your `jest.config.js` should point to `react-native` (or, on recent React Native versions, to the separate `@react-native/jest-preset` package). The preset is a node environment that mimics the environment of a React Native app. Because it doesn't load any DOM or browser APIs, it greatly improves Jest's startup time.
 
 ### transformIgnorePatterns customization
 
@@ -143,9 +151,7 @@ By default the `jest-react-native` preset only processes the project's own sourc
 
 ```json
 {
-  "transformIgnorePatterns": [
-    "node_modules/(?!(react-native|my-project|react-native-button)/)"
-  ]
+  "transformIgnorePatterns": ["node_modules/(?!((@)?react-native|my-project)/)"]
 }
 ```
 

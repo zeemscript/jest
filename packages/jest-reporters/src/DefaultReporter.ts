@@ -5,7 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import type {WriteStream} from 'node:tty';
+import chalk from 'chalk';
 import {getConsoleOutput} from '@jest/console';
 import type {
   AggregatedResult,
@@ -26,10 +27,10 @@ import getResultHeader from './getResultHeader';
 import getSnapshotStatus from './getSnapshotStatus';
 import type {ReporterOnStartOptions} from './types';
 
-type write = NodeJS.WriteStream['write'];
+type write = WriteStream['write'];
 type FlushBufferedOutput = () => void;
 
-const TITLE_BULLET = chalk.bold('\u25cf ');
+const TITLE_BULLET = chalk.bold('\u25CF ');
 
 export default class DefaultReporter extends BaseReporter {
   private _clear: string; // ANSI clear sequence for the last printed status
@@ -52,14 +53,18 @@ export default class DefaultReporter extends BaseReporter {
     this.__wrapStdio(process.stdout);
     this.__wrapStdio(process.stderr);
     this._status.onChange(() => {
+      this.__beginSynchronizedUpdate(
+        this._globalConfig.useStderr ? this._err : this._out,
+      );
       this.__clearStatus();
       this.__printStatus();
+      this.__endSynchronizedUpdate(
+        this._globalConfig.useStderr ? this._err : this._out,
+      );
     });
   }
 
-  protected __wrapStdio(
-    stream: NodeJS.WritableStream | NodeJS.WriteStream,
-  ): void {
+  protected __wrapStdio(stream: NodeJS.WritableStream | WriteStream): void {
     const write = stream.write.bind(stream);
 
     let buffer: Array<string> = [];
@@ -70,11 +75,17 @@ export default class DefaultReporter extends BaseReporter {
       buffer = [];
 
       // This is to avoid conflicts between random output and status text
+      this.__beginSynchronizedUpdate(
+        this._globalConfig.useStderr ? this._err : this._out,
+      );
       this.__clearStatus();
       if (string) {
         write(string);
       }
       this.__printStatus();
+      this.__endSynchronizedUpdate(
+        this._globalConfig.useStderr ? this._err : this._out,
+      );
 
       this._bufferedOutput.delete(flushBufferedOutput);
     };
@@ -191,16 +202,26 @@ export default class DefaultReporter extends BaseReporter {
     result: TestResult,
   ): void {
     // log retry errors if any exist
-    result.testResults.forEach(testResult => {
+    for (const testResult of result.testResults) {
       const testRetryReasons = testResult.retryReasons;
       if (testRetryReasons && testRetryReasons.length > 0) {
         this.log(
-          `${chalk.reset.inverse.bold.yellow(
-            ' LOGGING RETRY ERRORS ',
-          )} ${chalk.bold(testResult.fullName)}`,
+          `${chalk.reset.inverse.bold.yellow(' LOGGING RETRY ERRORS ')} ${chalk.bold(testResult.fullName)}`,
         );
-        testRetryReasons.forEach((retryReasons, index) => {
-          let {message, stack} = separateMessageFromStack(retryReasons);
+        for (const [index, retryReason] of testRetryReasons.entries()) {
+          this.log(
+            `${chalk.reset.inverse.bold.blueBright(` RETRY ${index + 1} `)}\n`,
+          );
+
+          const retryMessage = testResult.retryMessages?.[index];
+          if (retryMessage != null) {
+            this.log(`${retryMessage.trimEnd()}\n`);
+            continue;
+          }
+
+          // Test frameworks other than jest-circus only provide the
+          // serialized reason.
+          let {message, stack} = separateMessageFromStack(retryReason);
           stack = this._globalConfig.noStackTrace
             ? ''
             : chalk.dim(
@@ -209,22 +230,15 @@ export default class DefaultReporter extends BaseReporter {
 
           message = indentAllLines(message);
 
-          this.log(
-            `${chalk.reset.inverse.bold.blueBright(` RETRY ${index + 1} `)}\n`,
-          );
           this.log(`${message}\n${stack}\n`);
-        });
+        }
       }
-    });
+    }
 
     this.log(getResultHeader(result, this._globalConfig, config));
-    if (result.console) {
+    if (result.console && !(config.verbose ?? this._globalConfig.verbose)) {
       this.log(
-        `  ${TITLE_BULLET}Console\n\n${getConsoleOutput(
-          result.console,
-          config,
-          this._globalConfig,
-        )}`,
+        `  ${TITLE_BULLET}Console\n\n${getConsoleOutput(result.console, config, this._globalConfig)}`,
       );
     }
   }
@@ -239,6 +253,6 @@ export default class DefaultReporter extends BaseReporter {
     }
     const didUpdate = this._globalConfig.updateSnapshot === 'all';
     const snapshotStatuses = getSnapshotStatus(result.snapshot, didUpdate);
-    snapshotStatuses.forEach(this.log);
+    for (const status of snapshotStatuses) this.log(status);
   }
 }

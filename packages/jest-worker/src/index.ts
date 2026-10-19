@@ -5,13 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {
-  // @ts-expect-error - added in Node 19.4.0
-  availableParallelism,
-  cpus,
-} from 'os';
-import {isAbsolute} from 'path';
-import {fileURLToPath} from 'url';
+import {availableParallelism} from 'node:os';
+import {isAbsolute} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import Farm from './Farm';
 import WorkerPool from './WorkerPool';
 import type {
@@ -57,12 +53,6 @@ function getExposedMethods(
   }
 
   return exposedMethods;
-}
-
-function getNumberOfCpus(): number {
-  return typeof availableParallelism === 'function'
-    ? availableParallelism()
-    : cpus().length;
 }
 
 /**
@@ -116,9 +106,10 @@ export class Worker {
       idleMemoryLimit: this._options.idleMemoryLimit,
       maxRetries: this._options.maxRetries ?? 3,
       numWorkers:
-        this._options.numWorkers ?? Math.max(getNumberOfCpus() - 1, 1),
+        this._options.numWorkers ?? Math.max(availableParallelism() - 1, 1),
       resourceLimits: this._options.resourceLimits ?? {},
       setupArgs: this._options.setupArgs ?? [],
+      workerGracefulExitTimeout: this._options.workerGracefulExitTimeout,
     };
 
     if (this._options.WorkerPool) {
@@ -147,9 +138,9 @@ export class Worker {
     workerPath: string,
     options: WorkerFarmOptions,
   ): void {
-    getExposedMethods(workerPath, options).forEach(name => {
+    for (const name of getExposedMethods(workerPath, options)) {
       if (name.startsWith('_')) {
-        return;
+        continue;
       }
 
       // eslint-disable-next-line no-prototype-builtins
@@ -159,7 +150,7 @@ export class Worker {
 
       // @ts-expect-error: dynamic extension of the class instance is expected.
       this[name] = this._callFunctionWithArgs.bind(this, name);
-    });
+    }
   }
 
   private _callFunctionWithArgs(

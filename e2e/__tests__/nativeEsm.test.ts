@@ -5,8 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import {createRequire} from 'module';
 import {resolve} from 'path';
 import {onNodeVersions} from '@jest/test-utils';
+import {isError} from 'jest-util';
 import {extractSummary, runYarnInstall} from '../Utils';
 import runJest, {getConfig} from '../runJest';
 
@@ -16,8 +18,26 @@ jest.retryTimes(3);
 
 const DIR = resolve(__dirname, '../native-esm');
 
+let isolatedVmInstalled = false;
+
 beforeAll(() => {
   runYarnInstall(DIR);
+
+  const require = createRequire(`${DIR}/index.js`);
+
+  try {
+    const ivm = require('isolated-vm');
+    isolatedVmInstalled = ivm != null;
+  } catch (error) {
+    if (
+      isError(error) &&
+      (error as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND'
+    ) {
+      console.warn('`isolated-vm` is not installed, skipping its test');
+    } else {
+      throw error;
+    }
+  }
 });
 
 test('test config is without transform', () => {
@@ -39,6 +59,22 @@ test('runs test with native ESM', () => {
   expect(exitCode).toBe(0);
 });
 
+test('runs test with native mock ESM', () => {
+  const {exitCode, stderr, stdout} = runJest(
+    DIR,
+    ['native-esm-mocks.test.js'],
+    {
+      nodeOptions: '--experimental-vm-modules --no-warnings',
+    },
+  );
+
+  const {summary} = extractSummary(stderr);
+
+  expect(summary).toMatchSnapshot();
+  expect(stdout).toBe('');
+  expect(exitCode).toBe(0);
+});
+
 test('supports top-level await', () => {
   const {exitCode, stderr, stdout} = runJest(DIR, ['native-esm.tla.test.js'], {
     nodeOptions: '--experimental-vm-modules --no-warnings',
@@ -51,8 +87,8 @@ test('supports top-level await', () => {
   expect(exitCode).toBe(0);
 });
 
-// minimum version supported by discord.js
-onNodeVersions('>=16.9.0', () => {
+// minimum version supported by discord.js is 16.9, but they use syntax from 16.11
+onNodeVersions('>=16.11.0', () => {
   test('support re-exports from CJS of dual packages', () => {
     const {exitCode, stderr, stdout} = runJest(
       DIR,
@@ -82,6 +118,26 @@ test('support re-exports from CJS of core module', () => {
   expect(exitCode).toBe(0);
 });
 
+// `node:sqlite` is the first builtin without a bare counterpart that is stable
+// enough to import here. The range is where it no longer needs
+// `--experimental-sqlite`, so the fixture exercises resolution rather than the
+// flag.
+onNodeVersions('>=22.13.0 <23.0.0 || >=23.4.0', () => {
+  test('supports importing a builtin that only exists prefixed', () => {
+    const {exitCode, stderr, stdout} = runJest(
+      DIR,
+      ['native-esm-prefixed-builtin.test.js'],
+      {nodeOptions: '--experimental-vm-modules --no-warnings'},
+    );
+
+    const {summary} = extractSummary(stderr);
+
+    expect(summary).toMatchSnapshot();
+    expect(stdout).toBe('');
+    expect(exitCode).toBe(0);
+  });
+});
+
 test('runs WebAssembly (Wasm) test with native ESM', () => {
   const {exitCode, stderr, stdout} = runJest(DIR, ['native-esm-wasm.test.js'], {
     nodeOptions: '--experimental-vm-modules --no-warnings',
@@ -94,26 +150,60 @@ test('runs WebAssembly (Wasm) test with native ESM', () => {
   expect(exitCode).toBe(0);
 });
 
-test('does not enforce import assertions', () => {
+test('warns but does not throw on JSON import without attribute', () => {
   const {exitCode, stderr, stdout} = runJest(
     DIR,
-    ['native-esm-missing-import-assertions.test'],
+    ['native-esm-missing-import-assertions.test.js'],
     {nodeOptions: '--experimental-vm-modules --no-warnings'},
   );
 
   const {summary} = extractSummary(stderr);
 
   expect(summary).toMatchSnapshot();
+  expect(stderr).toContain(
+    'importing JSON without an import attribute is deprecated',
+  );
   expect(stdout).toBe('');
   expect(exitCode).toBe(0);
 });
 
-// version where `vm` API gets `import assertions`
-onNodeVersions('>=16.12.0', () => {
-  test('supports import assertions', () => {
+(isolatedVmInstalled ? test : test.skip)(
+  'properly handle re-exported native modules in ESM via CJS',
+  () => {
     const {exitCode, stderr, stdout} = runJest(
       DIR,
-      ['native-esm-import-assertions.test'],
+      ['native-esm-native-module.test.js'],
+      {nodeOptions: '--experimental-vm-modules --no-warnings'},
+    );
+
+    const {summary} = extractSummary(stderr);
+
+    expect(summary).toMatchSnapshot();
+    expect(stdout).toBe('');
+    expect(exitCode).toBe(0);
+  },
+);
+
+// `with` syntax for static import attributes is stable from Node 22.
+onNodeVersions('>=22.0.0', () => {
+  test('supports import attributes', () => {
+    const {exitCode, stderr, stdout} = runJest(
+      DIR,
+      ['native-esm-import-attributes.test.js'],
+      {nodeOptions: '--experimental-vm-modules --no-warnings'},
+    );
+
+    const {summary} = extractSummary(stderr);
+
+    expect(summary).toMatchSnapshot();
+    expect(stdout).toBe('');
+    expect(exitCode).toBe(0);
+  });
+
+  test('rejects mismatched import attributes', () => {
+    const {exitCode, stderr, stdout} = runJest(
+      DIR,
+      ['native-esm-import-attribute-mismatch.test.js'],
       {nodeOptions: '--experimental-vm-modules --no-warnings'},
     );
 
@@ -125,11 +215,31 @@ onNodeVersions('>=16.12.0', () => {
   });
 });
 
-onNodeVersions('<16.12.0', () => {
-  test('syntax error for import assertions', () => {
+// Legacy `assert` syntax for import attributes was supported from Node 16.12
+// and removed in Node 22. We still accept it on the runtimes that parse it so
+// users mid-migration aren't broken, but plan to drop the fallback in the
+// next major.
+onNodeVersions('>=16.12.0 <22.0.0', () => {
+  test('supports legacy import assertions', () => {
     const {exitCode, stderr, stdout} = runJest(
       DIR,
-      ['native-esm-import-assertions.test'],
+      ['native-esm-import-assertions.test.js'],
+      {nodeOptions: '--experimental-vm-modules --no-warnings'},
+    );
+
+    const {summary} = extractSummary(stderr);
+
+    expect(summary).toMatchSnapshot();
+    expect(stdout).toBe('');
+    expect(exitCode).toBe(0);
+  });
+});
+
+onNodeVersions('<16.12.0 || >=22.0.0', () => {
+  test('syntax error for legacy import assertions', () => {
+    const {exitCode, stderr, stdout} = runJest(
+      DIR,
+      ['native-esm-import-assertions.test.js'],
       {nodeOptions: '--experimental-vm-modules --no-warnings'},
     );
 

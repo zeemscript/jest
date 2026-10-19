@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import slash = require('slash');
+import * as path from 'node:path';
+import slash from 'slash';
 
 export default class ModuleNotFoundError extends Error {
   public code = 'MODULE_NOT_FOUND';
@@ -37,8 +37,7 @@ Require stack:
   ${this.requireStack
     .map(p => p.replace(`${rootDir}${path.sep}`, ''))
     .map(slash)
-    .join('\n  ')}
-`;
+    .join('\n  ')}`;
     }
 
     if (this.hint) {

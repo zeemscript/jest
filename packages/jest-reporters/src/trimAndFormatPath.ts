@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import chalk = require('chalk');
-import slash = require('slash');
+import * as path from 'node:path';
+import chalk from 'chalk';
+import slash from 'slash';
 import type {Config} from '@jest/types';
 import relativePath from './relativePath';
 
@@ -31,10 +31,7 @@ export default function trimAndFormatPath(
   const basenameLength = basename.length;
   if (basenameLength + 4 < maxLength) {
     const dirnameLength = maxLength - 4 - basenameLength;
-    dirname = `...${dirname.slice(
-      dirname.length - dirnameLength,
-      dirname.length,
-    )}`;
+    dirname = `...${dirname.slice(dirname.length - dirnameLength)}`;
     return slash(chalk.dim(dirname + path.sep) + chalk.bold(basename));
   }
 
@@ -44,8 +41,6 @@ export default function trimAndFormatPath(
 
   // can't fit dirname, but can fit trimmed basename
   return slash(
-    chalk.bold(
-      `...${basename.slice(basename.length - maxLength - 4, basename.length)}`,
-    ),
+    chalk.bold(`...${basename.slice(basename.length - maxLength - 4)}`),
   );
 }

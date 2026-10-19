@@ -5,214 +5,265 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {expectAssignable, expectError, expectType} from 'tsd-lite';
+import {describe, expect, test} from 'tstyche';
 import type {MockInstance, Mocked} from 'jest-mock';
 
-/// mocks class
+describe('Mocked', () => {
+  test('wraps a class type with type definitions of the Jest mock function', () => {
+    class SomeClass {
+      constructor(one: string, two?: boolean) {}
 
-class SomeClass {
-  constructor(one: string, two?: boolean) {}
+      methodA() {
+        return true;
+      }
+      methodB(a: string, b?: number) {
+        return;
+      }
+    }
 
-  methodA() {
-    return true;
-  }
-  methodB(a: string, b?: number) {
-    return;
-  }
-}
+    const MockSomeClass = SomeClass as Mocked<typeof SomeClass>;
 
-const MockSomeClass = SomeClass as Mocked<typeof SomeClass>;
+    expect(MockSomeClass.mock.calls[0]).type.toBe<
+      [one: string, two?: boolean]
+    >();
 
-expectType<[one: string, two?: boolean]>(MockSomeClass.mock.calls[0]);
+    expect(MockSomeClass.prototype.methodA.mock.calls[0]).type.toBe<[]>();
+    expect(MockSomeClass.prototype.methodB.mock.calls[0]).type.toBe<
+      [a: string, b?: number]
+    >();
 
-expectType<[]>(MockSomeClass.prototype.methodA.mock.calls[0]);
-expectType<[a: string, b?: number]>(
-  MockSomeClass.prototype.methodB.mock.calls[0],
-);
-
-expectError(MockSomeClass.prototype.methodA.mockReturnValue('true'));
-expectError(
-  MockSomeClass.prototype.methodB.mockImplementation(
-    (a: string, b?: string) => {
+    expect(
+      MockSomeClass.prototype.methodA.mockReturnValue,
+    ).type.not.toBeCallableWith('true');
+    expect(
+      MockSomeClass.prototype.methodB.mockImplementation,
+    ).type.not.toBeCallableWith((a: string, b?: string) => {
       return;
-    },
-  ),
-);
+    });
 
-expectType<[]>(MockSomeClass.mock.instances[0].methodA.mock.calls[0]);
-expectType<[a: string, b?: number]>(
-  MockSomeClass.prototype.methodB.mock.calls[0],
-);
+    expect(MockSomeClass.mock.instances[0].methodA.mock.calls[0]).type.toBe<
+      []
+    >();
+    expect(MockSomeClass.prototype.methodB.mock.calls[0]).type.toBe<
+      [a: string, b?: number]
+    >();
 
-const mockSomeInstance = new MockSomeClass('a') as Mocked<
-  InstanceType<typeof MockSomeClass>
->;
+    const mockSomeInstance = new MockSomeClass('a') as Mocked<
+      InstanceType<typeof MockSomeClass>
+    >;
 
-expectType<[]>(mockSomeInstance.methodA.mock.calls[0]);
-expectType<[a: string, b?: number]>(mockSomeInstance.methodB.mock.calls[0]);
+    expect(mockSomeInstance.methodA.mock.calls[0]).type.toBe<[]>();
+    expect(mockSomeInstance.methodB.mock.calls[0]).type.toBe<
+      [a: string, b?: number]
+    >();
 
-expectError(mockSomeInstance.methodA.mockReturnValue('true'));
-expectError(
-  mockSomeInstance.methodB.mockImplementation((a: string, b?: string) => {
-    return;
-  }),
-);
+    expect(mockSomeInstance.methodA.mockReturnValue).type.not.toBeCallableWith(
+      'true',
+    );
+    expect(
+      mockSomeInstance.methodB.mockImplementation,
+    ).type.not.toBeCallableWith((a: string, b?: string) => {
+      return;
+    });
 
-expectAssignable<SomeClass>(mockSomeInstance);
+    expect(new SomeClass('sample')).type.toBeAssignableFrom(mockSomeInstance);
+  });
 
-// mocks function
+  test('wraps a function type with type definitions of the Jest mock function', () => {
+    function someFunction(a: string, b?: number): boolean {
+      return true;
+    }
 
-function someFunction(a: string, b?: number): boolean {
-  return true;
-}
+    const mockFunction = someFunction as Mocked<typeof someFunction>;
 
-const mockFunction = someFunction as Mocked<typeof someFunction>;
+    expect(mockFunction.mock.calls[0]).type.toBe<[a: string, b?: number]>();
 
-expectType<[a: string, b?: number]>(mockFunction.mock.calls[0]);
+    expect(mockFunction.mockReturnValue).type.not.toBeCallableWith(123);
+    expect(mockFunction.mockImplementation).type.not.toBeCallableWith(
+      (a: boolean, b?: number) => true,
+    );
 
-expectError(mockFunction.mockReturnValue(123));
-expectError(mockFunction.mockImplementation((a: boolean, b?: number) => true));
+    expect(someFunction).type.toBeAssignableFrom(mockFunction);
+  });
 
-expectAssignable<typeof someFunction>(mockFunction);
+  test('wraps an async function type with type definitions of the Jest mock function', () => {
+    async function someAsyncFunction(a: Array<boolean>): Promise<string> {
+      return 'true';
+    }
 
-// mocks async function
+    const mockAsyncFunction = someAsyncFunction as Mocked<
+      typeof someAsyncFunction
+    >;
 
-async function someAsyncFunction(a: Array<boolean>): Promise<string> {
-  return 'true';
-}
+    expect(mockAsyncFunction.mock.calls[0]).type.toBe<[Array<boolean>]>();
 
-const mockAsyncFunction = someAsyncFunction as Mocked<typeof someAsyncFunction>;
+    expect(mockAsyncFunction.mockResolvedValue).type.not.toBeCallableWith(123);
+    expect(mockAsyncFunction.mockImplementation).type.not.toBeCallableWith(
+      (a: Array<boolean>) => Promise.resolve(true),
+    );
 
-expectType<[Array<boolean>]>(mockAsyncFunction.mock.calls[0]);
+    expect(someAsyncFunction).type.toBeAssignableFrom(mockAsyncFunction);
+  });
 
-expectError(mockAsyncFunction.mockResolvedValue(123));
-expectError(
-  mockAsyncFunction.mockImplementation((a: Array<boolean>) =>
-    Promise.resolve(true),
-  ),
-);
-
-expectAssignable<typeof someAsyncFunction>(mockAsyncFunction);
-
-// mocks function object
-
-interface SomeFunctionObject {
-  (a: number, b?: string): void;
-  one: {
-    (oneA: number, oneB?: boolean): boolean;
-    more: {
-      time: {
-        (time: number): void;
+  test('wraps a function object type with type definitions of the Jest mock function', () => {
+    interface SomeFunctionObject {
+      (a: number, b?: string): void;
+      one: {
+        (oneA: number, oneB?: boolean): boolean;
+        more: {
+          time: (time: number) => void;
+        };
       };
-    };
-  };
-}
+    }
 
-declare const someFunctionObject: SomeFunctionObject;
+    const someFunctionObject = {} as SomeFunctionObject;
 
-const mockFunctionObject = someFunctionObject as Mocked<
-  typeof someFunctionObject
->;
+    const mockFunctionObject = someFunctionObject as Mocked<
+      typeof someFunctionObject
+    >;
 
-expectType<[a: number, b?: string]>(mockFunctionObject.mock.calls[0]);
+    expect(mockFunctionObject.mock.calls[0]).type.toBe<
+      [a: number, b?: string]
+    >();
 
-expectError(mockFunctionObject.mockReturnValue(123));
-expectError(mockFunctionObject.mockImplementation(() => true));
+    expect(mockFunctionObject.mockReturnValue).type.not.toBeCallableWith(123);
+    expect(mockFunctionObject.mockImplementation).type.not.toBeCallableWith(
+      () => true,
+    );
 
-expectType<[time: number]>(mockFunctionObject.one.more.time.mock.calls[0]);
+    expect(mockFunctionObject.one.more.time.mock.calls[0]).type.toBe<
+      [time: number]
+    >();
 
-expectError(mockFunctionObject.one.more.time.mockReturnValue(123));
-expectError(
-  mockFunctionObject.one.more.time.mockImplementation((time: string) => {
-    return;
-  }),
-);
+    expect(
+      mockFunctionObject.one.more.time.mockReturnValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      mockFunctionObject.one.more.time.mockImplementation,
+    ).type.not.toBeCallableWith((time: string) => {
+      return;
+    });
 
-expectAssignable<typeof someFunctionObject>(mockFunctionObject);
+    expect(someFunctionObject).type.toBeAssignableFrom(mockFunctionObject);
+  });
 
-// mocks object
+  test('wraps an object type with type definitions of the Jest mock function', () => {
+    class SomeClass {
+      constructor(one: string, two?: boolean) {}
 
-const someObject = {
-  SomeClass,
+      methodA() {
+        return true;
+      }
+      methodB(a: string, b?: number) {
+        return;
+      }
+    }
 
-  methodA() {
-    return;
-  },
-  methodB(b: string) {
-    return true;
-  },
-  methodC: (c: number) => true,
+    const someObject = {
+      SomeClass,
 
-  one: {
-    more: {
-      time: (t: number) => {
+      methodA() {
         return;
       },
-    },
-  },
+      methodB(b: string) {
+        return true;
+      },
+      methodC: (c: number) => true,
 
-  propertyA: 123,
-  propertyB: 'value',
+      one: {
+        more: {
+          time: (t: number) => {
+            return;
+          },
+        },
+      },
 
-  someClassInstance: new SomeClass('value'),
-};
+      propertyA: 123,
+      propertyB: 'value',
 
-const mockObject = someObject as Mocked<typeof someObject>;
+      someClassInstance: new SomeClass('value'),
+    };
 
-expectType<[]>(mockObject.methodA.mock.calls[0]);
-expectType<[b: string]>(mockObject.methodB.mock.calls[0]);
-expectType<[c: number]>(mockObject.methodC.mock.calls[0]);
+    const mockObject = someObject as Mocked<typeof someObject>;
 
-expectType<[t: number]>(mockObject.one.more.time.mock.calls[0]);
+    expect(mockObject.methodA.mock.calls[0]).type.toBe<[]>();
+    expect(mockObject.methodB.mock.calls[0]).type.toBe<[b: string]>();
+    expect(mockObject.methodC.mock.calls[0]).type.toBe<[c: number]>();
 
-expectType<[one: string, two?: boolean]>(mockObject.SomeClass.mock.calls[0]);
-expectType<[]>(mockObject.SomeClass.prototype.methodA.mock.calls[0]);
-expectType<[a: string, b?: number]>(
-  mockObject.SomeClass.prototype.methodB.mock.calls[0],
-);
+    expect(mockObject.one.more.time.mock.calls[0]).type.toBe<[t: number]>();
 
-expectType<[]>(mockObject.someClassInstance.methodA.mock.calls[0]);
-expectType<[a: string, b?: number]>(
-  mockObject.someClassInstance.methodB.mock.calls[0],
-);
+    expect(mockObject.SomeClass.mock.calls[0]).type.toBe<
+      [one: string, two?: boolean]
+    >();
+    expect(mockObject.SomeClass.prototype.methodA.mock.calls[0]).type.toBe<
+      []
+    >();
+    expect(mockObject.SomeClass.prototype.methodB.mock.calls[0]).type.toBe<
+      [a: string, b?: number]
+    >();
 
-expectError(mockObject.methodA.mockReturnValue(123));
-expectError(mockObject.methodA.mockImplementation((a: number) => 123));
-expectError(mockObject.methodB.mockReturnValue(123));
-expectError(mockObject.methodB.mockImplementation((b: number) => 123));
-expectError(mockObject.methodC.mockReturnValue(123));
-expectError(mockObject.methodC.mockImplementation((c: number) => 123));
+    expect(mockObject.someClassInstance.methodA.mock.calls[0]).type.toBe<[]>();
+    expect(mockObject.someClassInstance.methodB.mock.calls[0]).type.toBe<
+      [a: string, b?: number]
+    >();
 
-expectError(mockObject.one.more.time.mockReturnValue(123));
-expectError(mockObject.one.more.time.mockImplementation((t: boolean) => 123));
+    expect(mockObject.methodA.mockReturnValue).type.not.toBeCallableWith(123);
+    expect(mockObject.methodA.mockImplementation).type.not.toBeCallableWith(
+      (a: number) => 123,
+    );
+    expect(mockObject.methodB.mockReturnValue).type.not.toBeCallableWith(123);
+    expect(mockObject.methodB.mockImplementation).type.not.toBeCallableWith(
+      (b: number) => 123,
+    );
+    expect(mockObject.methodC.mockReturnValue).type.not.toBeCallableWith(123);
+    expect(mockObject.methodC.mockImplementation).type.not.toBeCallableWith(
+      (c: number) => 123,
+    );
 
-expectError(mockObject.SomeClass.prototype.methodA.mockReturnValue(123));
-expectError(
-  mockObject.SomeClass.prototype.methodA.mockImplementation((a: number) => 123),
-);
-expectError(mockObject.SomeClass.prototype.methodB.mockReturnValue(123));
-expectError(
-  mockObject.SomeClass.prototype.methodB.mockImplementation((a: number) => 123),
-);
+    expect(mockObject.one.more.time.mockReturnValue).type.not.toBeCallableWith(
+      123,
+    );
+    expect(
+      mockObject.one.more.time.mockImplementation,
+    ).type.not.toBeCallableWith((t: boolean) => 123);
 
-expectError(mockObject.someClassInstance.methodA.mockReturnValue(123));
-expectError(
-  mockObject.someClassInstance.methodA.mockImplementation((a: number) => 123),
-);
-expectError(mockObject.someClassInstance.methodB.mockReturnValue(123));
-expectError(
-  mockObject.someClassInstance.methodB.mockImplementation((a: number) => 123),
-);
+    expect(
+      mockObject.SomeClass.prototype.methodA.mockReturnValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      mockObject.SomeClass.prototype.methodA.mockImplementation,
+    ).type.not.toBeCallableWith((a: number) => 123);
+    expect(
+      mockObject.SomeClass.prototype.methodB.mockReturnValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      mockObject.SomeClass.prototype.methodB.mockImplementation,
+    ).type.not.toBeCallableWith((a: number) => 123);
 
-expectAssignable<typeof someObject>(mockObject);
+    expect(
+      mockObject.someClassInstance.methodA.mockReturnValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      mockObject.someClassInstance.methodA.mockImplementation,
+    ).type.not.toBeCallableWith((a: number) => 123);
+    expect(
+      mockObject.someClassInstance.methodB.mockReturnValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      mockObject.someClassInstance.methodB.mockImplementation,
+    ).type.not.toBeCallableWith((a: number) => 123);
 
-// mocks 'console' object
+    expect(someObject).type.toBeAssignableFrom(mockObject);
+  });
 
-const mockConsole = console as Mocked<typeof console>;
+  test('wraps the global `console` object type with type definitions of the Jest mock function', () => {
+    const mockConsole = console as Mocked<typeof console>;
 
-expectAssignable<typeof console.log>(
-  mockConsole.log.mockImplementation(() => {}),
-);
-expectAssignable<MockInstance<typeof console.log>>(
-  mockConsole.log.mockImplementation(() => {}),
-);
+    expect(console.log).type.toBeAssignableFrom(
+      mockConsole.log.mockImplementation(() => {}),
+    );
+    expect<MockInstance<typeof console.log>>().type.toBeAssignableFrom(
+      mockConsole.log.mockImplementation(() => {}),
+    );
+  });
+});

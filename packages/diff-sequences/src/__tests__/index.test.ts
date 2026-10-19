@@ -21,12 +21,12 @@ describe('invalid arg', () => {
     });
     test('Infinity is not a safe integer', () => {
       expect(() => {
-        diff(Infinity, 0, isCommon, foundSubsequence);
+        diff(Number.POSITIVE_INFINITY, 0, isCommon, foundSubsequence);
       }).toThrow(/aLength/);
     });
     test('Not a Number is not a safe integer', () => {
       expect(() => {
-        diff(NaN, 0, isCommon, foundSubsequence);
+        diff(Number.NaN, 0, isCommon, foundSubsequence);
       }).toThrow(/aLength/);
     });
 
@@ -109,7 +109,7 @@ describe('input callback encapsulates comparison', () => {
 
   describe('Not a Number', () => {
     // input callback encapsulates identical sequences
-    const a = [NaN];
+    const a = [Number.NaN];
 
     test('is common according to Object.is method', () => {
       expect(countCommonObjectIs(a, a)).toBe(1);
@@ -573,9 +573,9 @@ describe('all common items inside recursive', () => {
     // depth 1 common items do not follow prev nor last forward segment when d === 8
     // depth 2 preceding common item follows prev forward segment when d === 4
     // depth 2 following transposed again so unswap swapped args
-    // depth 2 following common items do not follow prev nor last foward segment when d === 4
+    // depth 2 following common items do not follow prev nor last forward segment when d === 4
     // depth 3 preceding common item follows last forward segment when d === 2
-    // depth 3 following rransposed again so swap args again
+    // depth 3 following transposed again so swap args again
     // depth 3 following common item follows last forward segment when d === 2
     const a = [
       'delete1_depth2_preceding_prevF',

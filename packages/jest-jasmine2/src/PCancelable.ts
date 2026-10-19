@@ -46,11 +46,10 @@ export default class PCancelable<T> implements PromiseLike<T> {
     });
   }
 
+  // eslint-disable-next-line unicorn/no-thenable
   then<TResult1 = T, TResult2 = never>(
     onFulfilled?:
-      | ((value: T) => TResult1 | PromiseLike<TResult1>)
-      | undefined
-      | null,
+      ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
     onRejected?:
       | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
       | undefined
@@ -61,9 +60,7 @@ export default class PCancelable<T> implements PromiseLike<T> {
 
   catch<TResult>(
     onRejected?:
-      | ((reason: unknown) => TResult | PromiseLike<TResult>)
-      | undefined
-      | null,
+      ((reason: unknown) => TResult | PromiseLike<TResult>) | undefined | null,
   ): Promise<T | TResult> {
     return this._promise.catch(onRejected);
   }
@@ -76,8 +73,8 @@ export default class PCancelable<T> implements PromiseLike<T> {
     if (typeof this._cancel === 'function') {
       try {
         this._cancel();
-      } catch (err) {
-        this._reject(err);
+      } catch (error) {
+        this._reject(error);
       }
     }
 

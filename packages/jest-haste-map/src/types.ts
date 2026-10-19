@@ -5,7 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {Stats} from 'graceful-fs';
+// eslint-disable-next-line no-restricted-imports
+import type {Stats} from 'node:fs';
 import type HasteFS from './HasteFS';
 import type ModuleMap from './ModuleMap';
 
@@ -50,6 +51,7 @@ export interface IHasteFS {
     globs: ReadonlyArray<string>,
     root: string | null,
   ): Set<string>;
+  getModuleName(file: string): string | null;
 }
 
 export interface IHasteMap {
@@ -87,6 +89,7 @@ export type WorkerMetadata = {
 
 export type CrawlerOptions = {
   computeSha1: boolean;
+  console: Console;
   enableSymlinks: boolean;
   data: InternalHasteMap;
   extensions: Array<string>;
@@ -94,6 +97,7 @@ export type CrawlerOptions = {
   ignore: IgnoreMatcher;
   rootDir: string;
   roots: Array<string>;
+  watchmanSockname: string | undefined;
 };
 
 export type HasteImpl = {
@@ -120,12 +124,17 @@ export type HasteRegExp = RegExp | ((str: string) => boolean);
 export type DuplicatesSet = Map<string, /* type */ number>;
 export type DuplicatesIndex = Map<string, Map<string, DuplicatesSet>>;
 
+export type MockDuplicates = Map<string, Set<string>>;
+
 export type InternalHasteMap = {
   clocks: WatchmanClocks;
   duplicates: DuplicatesIndex;
   files: FileData;
   map: ModuleMapData;
   mocks: MockData;
+  // Every file claiming a given mock name, so that removing the one `mocks`
+  // points at can fall back to a survivor instead of dropping the name.
+  mockDuplicates: MockDuplicates;
 };
 export type HasteMap = {
   hasteFS: HasteFS;
@@ -176,8 +185,8 @@ export type ChangeEvent = {
 export type DependencyExtractor = {
   extract: (
     code: string,
-    filePath: string,
-    defaultExtract: DependencyExtractor['extract'],
+    filePath?: string,
+    defaultExtract?: DependencyExtractor['extract'],
   ) => Iterable<string>;
   getCacheKey?: () => string;
 };

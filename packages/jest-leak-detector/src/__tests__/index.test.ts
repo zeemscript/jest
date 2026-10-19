@@ -5,7 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import {getHeapSnapshot} from 'v8';
 import LeakDetector from '../index';
+
+jest.mock('v8', () => ({
+  ...(jest.requireActual('v8') as Record<string, unknown>),
+  getHeapSnapshot: jest.fn(),
+}));
 
 const gc = globalThis.gc;
 
@@ -23,7 +29,7 @@ it('complains if the value is a primitive', () => {
   expect(() => new LeakDetector('foo')).toThrowErrorMatchingSnapshot();
   expect(() => new LeakDetector(Symbol())).toThrowErrorMatchingSnapshot();
   expect(() => new LeakDetector(Symbol('foo'))).toThrowErrorMatchingSnapshot();
-  expect(() => new LeakDetector(NaN)).toThrowErrorMatchingSnapshot();
+  expect(() => new LeakDetector(Number.NaN)).toThrowErrorMatchingSnapshot();
 });
 
 it('does not show the GC if hidden', async () => {
@@ -54,6 +60,7 @@ it('correctly checks simple leaks', async () => {
   expect(isLeaking).toBe(true);
 
   // We destroy the only reference to the object we had.
+  // eslint-disable-next-line no-useless-assignment
   reference = null;
 
   // Reference should be gone.
@@ -108,6 +115,7 @@ it('correctly checks more complex leaks', async () => {
   expect(isLeaking2).toBe(true);
 
   // We destroy the reference to ref1.
+  // eslint-disable-next-line no-useless-assignment
   ref1 = null;
 
   // It will still be referenced by ref2, so both references are still leaking.
@@ -117,6 +125,7 @@ it('correctly checks more complex leaks', async () => {
   expect(isLeaking2).toBe(true);
 
   // We destroy the reference to ref2.
+  // eslint-disable-next-line no-useless-assignment
   ref2 = null;
 
   // Now both references should be gone (yay mark & sweep!).
@@ -124,4 +133,26 @@ it('correctly checks more complex leaks', async () => {
   expect(isLeaking1).toBe(false);
   isLeaking2 = await detector2.isLeaking();
   expect(isLeaking2).toBe(false);
+});
+
+it('generate V8 heap snapshots can be toggled on and off', async () => {
+  const getHeapSnapshotSpy = jest.fn();
+  getHeapSnapshot.mockImplementation(getHeapSnapshotSpy);
+
+  const ref1: unknown = {};
+  const ref2: unknown = {};
+  const ref3: unknown = {};
+
+  let detector = new LeakDetector(ref1);
+  const isLeaking = await detector.isLeaking();
+  expect(isLeaking).toBe(true);
+  expect(getHeapSnapshotSpy).toHaveBeenCalledTimes(1);
+
+  detector = new LeakDetector(ref2, {shouldGenerateV8HeapSnapshot: true});
+  await detector.isLeaking();
+  expect(getHeapSnapshotSpy).toHaveBeenCalledTimes(2);
+
+  detector = new LeakDetector(ref3, {shouldGenerateV8HeapSnapshot: false});
+  await detector.isLeaking();
+  expect(getHeapSnapshotSpy).toHaveBeenCalledTimes(2);
 });

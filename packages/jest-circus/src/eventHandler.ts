@@ -5,17 +5,21 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {Circus} from '@jest/types';
+import type {Circus, Global} from '@jest/types';
+import {invariant} from 'jest-util';
 import {
   injectGlobalErrorHandlers,
   restoreGlobalErrorHandlers,
 } from './globalErrorHandlers';
+import {
+  getTestExecutionContext,
+  hasActiveDescribeRetryAttempt,
+} from './testExecutionContext';
 import {LOG_ERRORS_BEFORE_RETRY, TEST_TIMEOUT_SYMBOL} from './types';
 import {
   addErrorToEachTestUnderDescribe,
   describeBlockHasTests,
   getTestDuration,
-  invariant,
   makeDescribe,
   makeTest,
 } from './utils';
@@ -53,10 +57,10 @@ const eventHandler: Circus.EventHandler = (event, state) => {
       invariant(currentDescribeBlock, 'currentDescribeBlock must be there');
 
       if (!describeBlockHasTests(currentDescribeBlock)) {
-        currentDescribeBlock.hooks.forEach(hook => {
+        for (const hook of currentDescribeBlock.hooks) {
           hook.asyncError.message = `Invalid: ${hook.type}() may not be used in a describe block containing no tests.`;
           state.unhandledErrors.push(hook.asyncError);
-        });
+        }
       }
 
       // pass mode of currentDescribeBlock to tests
@@ -68,11 +72,11 @@ const eventHandler: Circus.EventHandler = (event, state) => {
         )
       );
       if (shouldPassMode) {
-        currentDescribeBlock.children.forEach(child => {
+        for (const child of currentDescribeBlock.children) {
           if (child.type === 'test' && !child.mode) {
             child.mode = currentDescribeBlock.mode;
           }
-        });
+        }
       }
       if (
         !state.hasFocusedTests &&
@@ -184,10 +188,12 @@ const eventHandler: Circus.EventHandler = (event, state) => {
     }
     case 'test_skip': {
       event.test.status = 'skip';
+      state.currentlyRunningTest = null;
       break;
     }
     case 'test_todo': {
       event.test.status = 'todo';
+      state.currentlyRunningTest = null;
       break;
     }
     case 'test_done': {
@@ -216,8 +222,8 @@ const eventHandler: Circus.EventHandler = (event, state) => {
     }
     case 'test_retry': {
       const logErrorsBeforeRetry: boolean =
-        // eslint-disable-next-line no-restricted-globals
-        global[LOG_ERRORS_BEFORE_RETRY] || false;
+        ((globalThis as Global.Global)[LOG_ERRORS_BEFORE_RETRY] as any) ||
+        false;
       if (logErrorsBeforeRetry) {
         event.test.retryReasons.push(...event.test.errors);
       }
@@ -226,10 +232,12 @@ const eventHandler: Circus.EventHandler = (event, state) => {
     }
     case 'run_start': {
       state.hasStarted = true;
-      /* eslint-disable no-restricted-globals */
-      global[TEST_TIMEOUT_SYMBOL] &&
-        (state.testTimeout = global[TEST_TIMEOUT_SYMBOL]);
-      /* eslint-enable */
+      if ((globalThis as Global.Global)[TEST_TIMEOUT_SYMBOL]) {
+        state.testTimeout = (globalThis as Global.Global)[
+          TEST_TIMEOUT_SYMBOL
+        ] as number;
+      }
+
       break;
     }
     case 'run_finish': {
@@ -269,9 +277,49 @@ const eventHandler: Circus.EventHandler = (event, state) => {
       // execution, which will result in one test's error failing another test.
       // In any way, it should be possible to track where the error was thrown
       // from.
-      state.currentlyRunningTest
-        ? state.currentlyRunningTest.errors.push(event.error)
-        : state.unhandledErrors.push(event.error);
+      const context = getTestExecutionContext();
+      if (event.promise) {
+        let target = state.unhandledRejectionErrorByPromise;
+        if (context?.test) {
+          target = context.test.unhandledRejectionErrorByPromise;
+        } else if (context?.hook) {
+          const hookTarget = state.unhandledRejectionErrorByPromiseByHook.get(
+            context.hook,
+          );
+          if (hookTarget) {
+            target = hookTarget;
+          } else {
+            target = new Map();
+            state.unhandledRejectionErrorByPromiseByHook.set(
+              context.hook,
+              target,
+            );
+          }
+        }
+        target.set(event.promise, event.error);
+        state.unhandledRejectionErrorByPromiseTarget.set(event.promise, target);
+
+        const hasOwner =
+          context?.test !== undefined || context?.hook !== undefined;
+        if (hasActiveDescribeRetryAttempt() && !hasOwner) {
+          state.processErrorGeneration++;
+        }
+      } else if (context?.test) {
+        context.test.errors.push(event.error);
+      } else {
+        // Nothing owns this error, so a discarded describe attempt cannot roll
+        // it back — it has to stop the retry instead.
+        state.processErrorGeneration++;
+        state.unhandledErrors.push(event.error);
+      }
+      break;
+    }
+    case 'error_handled': {
+      const target = state.unhandledRejectionErrorByPromiseTarget.get(
+        event.promise,
+      );
+      target?.delete(event.promise);
+      state.unhandledRejectionErrorByPromiseTarget.delete(event.promise);
       break;
     }
   }

@@ -10,6 +10,12 @@ import * as renderer from 'react-test-renderer';
 import prettyFormat, {plugins} from '../';
 import type {OptionsReceived} from '../types';
 
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const elementSymbol = Symbol.for('react.element');
 const fragmentSymbol = Symbol.for('react.fragment');
 const suspenseSymbol = Symbol.for('react.suspense');
@@ -25,15 +31,21 @@ const formatTestObject = (object: unknown, options?: OptionsReceived) =>
     ...options,
   });
 
+const renderToJSON = (element: React.ReactElement) => {
+  let testRenderer: renderer.ReactTestRenderer;
+  renderer.act(() => {
+    testRenderer = renderer.create(element);
+  });
+  return testRenderer!.toJSON();
+};
+
 function assertPrintedJSX(
   val: React.ReactElement,
   expected: string,
   options?: OptionsReceived,
 ) {
   expect(formatElement(val, options)).toEqual(expected);
-  expect(formatTestObject(renderer.create(val).toJSON(), options)).toEqual(
-    expected,
-  );
+  expect(formatTestObject(renderToJSON(val), options)).toEqual(expected);
 }
 
 test('supports a single element with no props or children', () => {
@@ -48,10 +60,7 @@ test('supports a single element with non-empty string child', () => {
 });
 
 test('supports a single element with empty string child', () => {
-  assertPrintedJSX(
-    React.createElement('Mouse', null, ''),
-    '<Mouse>\n  \n</Mouse>',
-  );
+  assertPrintedJSX(React.createElement('Mouse', null, ''), '<Mouse />');
 });
 
 test('supports a single element with non-zero number child', () => {
@@ -385,13 +394,13 @@ test('supports array of elements', () => {
     ']',
   ].join('\n');
   expect(formatElement(val)).toEqual(expected);
-  expect(
-    formatTestObject(val.map(element => renderer.create(element).toJSON())),
-  ).toEqual(expected);
+  expect(formatTestObject(val.map(element => renderToJSON(element)))).toEqual(
+    expected,
+  );
 });
 
 describe('test object for subset match', () => {
-  // Although test object returned by renderer.create(element).toJSON()
+  // Although test object returned by renderToJSON(element)
   // has both props and children, make sure plugin allows them to be undefined.
   test('undefined props', () => {
     const val = {
@@ -449,13 +458,13 @@ describe('indent option', () => {
   // Tests assume that no strings in val contain multiple adjacent spaces!
   test('non-default: 0 spaces', () => {
     const indent = 0;
-    assertPrintedJSX(val, expected.replace(/ {2}/g, ' '.repeat(indent)), {
+    assertPrintedJSX(val, expected.replaceAll(/ {2}/g, ' '.repeat(indent)), {
       indent,
     });
   });
   test('non-default: 4 spaces', () => {
     const indent = 4;
-    assertPrintedJSX(val, expected.replace(/ {2}/g, ' '.repeat(indent)), {
+    assertPrintedJSX(val, expected.replaceAll(/ {2}/g, ' '.repeat(indent)), {
       indent,
     });
   });
@@ -567,7 +576,7 @@ describe('maxDepth option', () => {
     expect(formatElement(array, {maxDepth})).toEqual(expected);
     expect(
       formatTestObject(
-        array.map(element => renderer.create(element).toJSON()),
+        array.map(element => renderToJSON(element)),
         {maxDepth},
       ),
     ).toEqual(expected);
@@ -580,7 +589,7 @@ test('min option', () => {
       'Mouse',
       {customProp: {one: '1', two: 2}, onclick: function onclick() {}},
       'HELLO',
-      React.createElement(
+      React.createElement<{customProp: unknown; onclick: unknown}>(
         'Mouse',
         {customProp: {one: '1', two: 2}, onclick: function onclick() {}},
         'HELLO',
@@ -620,7 +629,7 @@ test('ReactTestComponent plugin highlights syntax', () => {
     ),
   });
   expect(
-    formatTestObject(renderer.create(jsx).toJSON(), {
+    formatTestObject(renderToJSON(jsx), {
       highlight: true,
     }),
   ).toMatchSnapshot();
@@ -696,7 +705,7 @@ test('ReactTestComponent plugin highlights syntax with color from theme option',
     'Hello, Mouse!',
   );
   expect(
-    formatTestObject(renderer.create(jsx).toJSON(), {
+    formatTestObject(renderToJSON(jsx), {
       highlight: true,
       theme: {
         value: 'red',
@@ -769,11 +778,11 @@ test('supports context Consumer with a child', () => {
 
   expect(
     formatElement(
-      React.createElement(Consumer, null, () =>
-        React.createElement('div', null, 'child'),
-      ),
+      React.createElement(Consumer, {
+        children: () => React.createElement('div', null, 'child'),
+      }),
     ),
-  ).toBe('<Context.Consumer>\n  [Function anonymous]\n</Context.Consumer>');
+  ).toBe('<Context.Consumer>\n  [Function children]\n</Context.Consumer>');
 });
 
 test('ReactElement removes undefined props', () => {

@@ -6,7 +6,8 @@
  */
 
 import {Writable} from 'stream';
-import chalk = require('chalk');
+import type {WriteStream} from 'tty';
+import chalk from 'chalk';
 import CustomConsole from '../CustomConsole';
 
 describe('CustomConsole', () => {
@@ -23,14 +24,14 @@ describe('CustomConsole', () => {
         _stdout += chunk.toString();
         callback();
       },
-    }) as NodeJS.WriteStream;
+    }) as WriteStream;
 
     const stderr = new Writable({
       write(chunk: string, _encoding, callback) {
         _stderr += chunk.toString();
         callback();
       },
-    }) as NodeJS.WriteStream;
+    }) as WriteStream;
 
     _console = new CustomConsole(stdout, stderr);
   });
@@ -78,7 +79,7 @@ describe('CustomConsole', () => {
       expect(_stderr).toMatch('AssertionError');
       expect(_stderr).toMatch(
         // The message may differ across Node versions
-        /(false == true)|(The expression evaluated to a falsy value:)/,
+        /(false == true)|(The expression evaluated to a falsy value)/,
       );
     });
 
@@ -238,6 +239,64 @@ describe('CustomConsole', () => {
   describe('console', () => {
     test('should be able to initialize console instance', () => {
       expect(_console.Console).toBeDefined();
+    });
+  });
+
+  describe('getBuffer', () => {
+    test('should return undefined when no messages have been logged', () => {
+      expect(_console.getBuffer()).toBeUndefined();
+    });
+
+    test('should return buffer with log entries after logging', () => {
+      _console.log('Hello world!');
+
+      const buffer = _console.getBuffer();
+      expect(buffer).toBeDefined();
+      expect(buffer).toHaveLength(1);
+      expect(buffer![0].message).toBe('Hello world!');
+      expect(buffer![0].type).toBe('log');
+      expect(buffer![0].origin).toBeDefined();
+    });
+
+    test('should buffer error messages', () => {
+      _console.error('Some error');
+
+      const buffer = _console.getBuffer();
+      expect(buffer).toBeDefined();
+      expect(buffer).toHaveLength(1);
+      expect(buffer![0].message).toBe('Some error');
+      expect(buffer![0].type).toBe('error');
+    });
+
+    test('should buffer warn messages', () => {
+      _console.warn('Some warning');
+
+      const buffer = _console.getBuffer();
+      expect(buffer).toBeDefined();
+      expect(buffer).toHaveLength(1);
+      expect(buffer![0].message).toBe('Some warning');
+      expect(buffer![0].type).toBe('warn');
+    });
+
+    test('should accumulate multiple log entries', () => {
+      _console.log('first');
+      _console.error('second');
+      _console.warn('third');
+
+      const buffer = _console.getBuffer();
+      expect(buffer).toHaveLength(3);
+      expect(buffer![0].type).toBe('log');
+      expect(buffer![1].type).toBe('error');
+      expect(buffer![2].type).toBe('warn');
+    });
+
+    test('should still print to stdout/stderr while buffering', () => {
+      _console.log('to stdout');
+      _console.error('to stderr');
+
+      expect(_stdout).toBe('to stdout\n');
+      expect(_stderr).toBe('to stderr\n');
+      expect(_console.getBuffer()).toHaveLength(2);
     });
   });
 });

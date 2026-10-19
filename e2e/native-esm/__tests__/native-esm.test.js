@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import dns from 'dns';
+import dns, * as dnsNamespace from 'dns';
 // the point here is that it's the node core module
 // eslint-disable-next-line no-restricted-imports
 import {readFileSync} from 'fs';
 import {createRequire} from 'module';
-import prefixDns from 'node:dns';
+import prefixDns, * as prefixDnsNamespace from 'node:dns';
 import {dirname, resolve} from 'path';
 import {fileURLToPath} from 'url';
 import {jest as jestObject} from '@jest/globals';
@@ -18,21 +18,59 @@ import staticImportedStatefulFromCjs from '../fromCjs.mjs';
 import {double} from '../index';
 import defaultFromCjs, {half, namedFunction} from '../namedExport.cjs';
 import {bag} from '../namespaceExport.js';
+/* eslint-disable import-x/no-duplicates */
 import staticImportedStateful from '../stateful.mjs';
 import staticImportedStatefulWithQuery from '../stateful.mjs?query=1';
 import staticImportedStatefulWithAnotherQuery from '../stateful.mjs?query=2';
+/* eslint-enable */
 
 test('should have correct import.meta', () => {
   expect(typeof require).toBe('undefined');
   expect(typeof jest).toBe('undefined');
   expect(import.meta).toEqual({
+    dirname: expect.any(String),
+    filename: expect.any(String),
     jest: expect.anything(),
+    main: true,
+    resolve: expect.any(Function),
     url: expect.any(String),
   });
   expect(import.meta.jest).toBe(jestObject);
   expect(
     import.meta.url.endsWith('/e2e/native-esm/__tests__/native-esm.test.js'),
   ).toBe(true);
+  if (process.platform === 'win32') {
+    expect(
+      import.meta.filename.endsWith(
+        '\\e2e\\native-esm\\__tests__\\native-esm.test.js',
+      ),
+    ).toBe(true);
+    expect(import.meta.dirname.endsWith('\\e2e\\native-esm\\__tests__')).toBe(
+      true,
+    );
+  } else {
+    expect(
+      import.meta.filename.endsWith(
+        '/e2e/native-esm/__tests__/native-esm.test.js',
+      ),
+    ).toBe(true);
+    expect(import.meta.dirname.endsWith('/e2e/native-esm/__tests__')).toBe(
+      true,
+    );
+  }
+  expect(
+    import.meta
+      .resolve('colors')
+      .endsWith('/e2e/native-esm/node_modules/colors/lib/index.js'),
+  ).toBe(true);
+  expect(
+    import.meta
+      .resolve('./native-esm.test')
+      .endsWith('/e2e/native-esm/__tests__/native-esm.test.js'),
+  ).toBe(true);
+  // Builtins have no path, so Node answers with the `node:` specifier itself.
+  expect(import.meta.resolve('dns')).toBe('node:dns');
+  expect(import.meta.resolve('node:dns')).toBe('node:dns');
 });
 
 test('should double stuff', () => {
@@ -45,6 +83,7 @@ test('should support importing node core modules', () => {
 
   expect(JSON.parse(readFileSync(packageJsonPath, 'utf8'))).toEqual({
     devDependencies: {
+      colors: '^1.4.0',
       'discord.js': '14.3.0',
       'iso-constants': '^0.1.2',
       yargs: '^17.5.1',
@@ -52,6 +91,9 @@ test('should support importing node core modules', () => {
     jest: {
       testEnvironment: 'node',
       transform: {},
+    },
+    optionalDependencies: {
+      'isolated-vm': '^4.6.0',
     },
     type: 'module',
   });
@@ -175,39 +217,9 @@ test('handle circular dependency', async () => {
   expect(moduleA.moduleB.moduleA).toBe(moduleA);
 });
 
-test('require of ESM should throw correct error', () => {
-  const require = createRequire(import.meta.url);
-
-  expect(() => require('../fromCjs.mjs')).toThrow(
-    expect.objectContaining({
-      code: 'ERR_REQUIRE_ESM',
-      message: expect.stringContaining('Must use import to load ES Module'),
-    }),
-  );
-});
-
-test('can mock module', async () => {
-  jestObject.unstable_mockModule('../mockedModule.mjs', () => ({foo: 'bar'}), {
-    virtual: true,
-  });
-
-  const importedMock = await import('../mockedModule.mjs');
-
-  expect(Object.keys(importedMock)).toEqual(['foo']);
-  expect(importedMock.foo).toBe('bar');
-});
-
-test('can mock transitive module', async () => {
-  jestObject.unstable_mockModule('../index.js', () => ({foo: 'bar'}));
-
-  const importedMock = await import('../reexport.js');
-
-  expect(Object.keys(importedMock)).toEqual(['foo']);
-  expect(importedMock.foo).toBe('bar');
-});
-
 test('supports imports using "node:" prefix', () => {
   expect(dns).toBe(prefixDns);
+  expect(dnsNamespace).toBe(prefixDnsNamespace);
 });
 
 test('supports imports from "data:text/javascript" URI with charset=utf-8 encoding', async () => {
@@ -234,25 +246,25 @@ test('supports imports from "data:text/javascript" URI without explicit encoding
   expect(importedEncoded.something).toBe('some value');
 });
 
-test('imports from "data:text/javascript" URI with invalid encoding fail', async () => {
+test('imports from "data:text/javascript" URI with an unknown parameter', async () => {
   const code = 'export const something = "some value"';
-  await expect(() =>
-    import(
-      `data:text/javascript;charset=badEncoding,${encodeURIComponent(code)}`
-    ),
-  ).rejects.toThrow('Invalid data URI');
+  const module = await import(
+    `data:text/javascript;charset=badEncoding,${encodeURIComponent(code)}`
+  );
+
+  expect(module.something).toBe('some value');
 });
 
 test('imports from "data:" URI with invalid mime type fail', async () => {
   const code = 'export const something = "some value"';
-  await expect(() =>
-    import(`data:something/else,${encodeURIComponent(code)}`),
-  ).rejects.toThrow('Invalid data URI');
+  await expect(
+    () => import(`data:something/else,${encodeURIComponent(code)}`),
+  ).rejects.toThrow('Unknown module format: something/else');
 });
 
 test('imports from "data:text/javascript" URI with invalid data fail', async () => {
-  await expect(() =>
-    import('data:text/javascript;charset=utf-8,so(me)+.-gibberish'),
+  await expect(
+    () => import('data:text/javascript;charset=utf-8,so(me)+.-gibberish'),
   ).rejects.toThrow("Unexpected token '.'");
 });
 

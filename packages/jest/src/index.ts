@@ -14,6 +14,10 @@ export {
   runCLI,
 } from '@jest/core';
 
-export {run} from 'jest-cli';
+export {run, buildArgv} from 'jest-cli';
+
+export {defineConfig, mergeConfig} from 'jest-config';
 
 export type Config = ConfigTypes.InitialOptions;
+export type GlobalConfig = ConfigTypes.GlobalConfig;
+export type ProjectConfig = ConfigTypes.ProjectConfig;

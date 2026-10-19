@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {Config} from '@jest/types';
 import {pluralize} from 'jest-util';
 import type {TestRunData} from './types';
@@ -27,7 +27,7 @@ export default function getNoTestFound(
       .join(', ')}`;
   } else {
     dataMessage = `Pattern: ${chalk.yellow(
-      globalConfig.testPathPattern,
+      globalConfig.testPathPatterns.toPretty(),
     )} - 0 matches`;
   }
 

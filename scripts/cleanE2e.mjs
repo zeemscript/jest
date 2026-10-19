@@ -5,13 +5,15 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {dirname, normalize, resolve} from 'path';
-import {fileURLToPath} from 'url';
-import glob from 'glob';
+import {dirname, normalize, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {glob} from 'glob';
 import fs from 'graceful-fs';
 
 const excludedModules = [
   'e2e/global-setup-node-modules/node_modules/',
+  'e2e/native-esm-js-esm-syntax-fallback/node_modules/',
+  'e2e/native-esm-require-module/node_modules/',
   'e2e/presets/cjs/node_modules/',
   'e2e/presets/js/node_modules/',
   'e2e/presets/js-type-module/node_modules/',
@@ -29,6 +31,6 @@ const e2eNodeModules = glob.sync('e2e/{*,*/*}/node_modules/', {
   ignore: excludedModules,
 });
 
-e2eNodeModules.forEach(dir => {
+for (const dir of e2eNodeModules) {
   fs.rmSync(dir, {force: true, recursive: true});
-});
+}

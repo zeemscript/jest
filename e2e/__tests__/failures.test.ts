@@ -7,17 +7,33 @@
 
 import * as path from 'path';
 import {extractSummary, runYarnInstall} from '../Utils';
-import runJest from '../runJest';
+import runJest, {json as runJestJson} from '../runJest';
 
 const dir = path.resolve(__dirname, '../failures');
 
-const normalizeDots = (text: string) => text.replace(/\.{1,}$/gm, '.');
+const normalizeDots = (text: string) => text.replaceAll(/\.+$/gm, '.');
+
+// These snapshots run with both Circus and Jasmine, which format the wrapper
+// around non-Error failures differently. Keep the user-facing stack comparable.
+function normalizeCircusErrorCauses(text: string) {
+  return text.replaceAll(
+    /\n {10}at Array\.map \(<anonymous>\)\n\n {4}Cause:\n([\s\S]*?)(?=\n {2}● |$)/g,
+    (match, cause: string) => {
+      const stackStart = cause.search(/\n {10}(?:\d+ \||at )/);
+      return stackStart === -1
+        ? match
+        : `\n${cause.slice(stackStart + 1).replaceAll(/^ {4}/gm, '')}`;
+    },
+  );
+}
 
 function cleanStderr(stderr: string) {
   const {rest} = extractSummary(stderr);
-  return rest
-    .replace(/.*(jest-jasmine2|jest-circus).*\n/g, '')
-    .replace(new RegExp('Failed: Object {', 'g'), 'thrown: Object {');
+  return normalizeCircusErrorCauses(
+    rest
+      .replaceAll(/.*(jest-jasmine2|jest-circus).*\n/g, '')
+      .replaceAll(new RegExp('Failed: Object {', 'g'), 'thrown: Object {'),
+  );
 }
 
 beforeAll(() => {
@@ -47,6 +63,26 @@ test('works with node assert', () => {
   expect(summary).toMatchSnapshot();
 });
 
+test('node assert diffs honor --expand', () => {
+  // The unchanged keys are printed in full ahead of the diff either way, so
+  // only the `Difference:` section tells the two modes apart.
+  const diffSection = (stderr: string) =>
+    cleanStderr(stderr).split('Difference:').at(-1)!;
+
+  const collapsed = diffSection(
+    runJest(dir, ['assertionErrorExpand.test.js']).stderr,
+  );
+  const expanded = diffSection(
+    runJest(dir, ['assertionErrorExpand.test.js', '--expand']).stderr,
+  );
+
+  expect(collapsed).toContain('@@');
+  expect(collapsed).not.toContain('"key9": 9');
+
+  expect(expanded).not.toContain('@@');
+  expect(expanded).toContain('"key9": 9');
+});
+
 test('works with assertions in separate files', () => {
   const {stderr} = runJest(dir, ['testMacro.test.js']);
 
@@ -58,14 +94,14 @@ test('works with async failures', () => {
 
   const rest = cleanStderr(stderr)
     .split('\n')
-    .filter(line => line.indexOf('packages/expect/build/index.js') === -1)
+    .filter(line => !line.includes('packages/expect/build/index.js'))
     .join('\n');
 
   // Remove replacements when jasmine is gone
   const result = normalizeDots(rest)
     .replace(/.*thrown:.*\n/, '')
     .replace(
-      /.*Add a timeout value to this test to increase the timeout, if this is a long-running test. See https:\/\/jestjs.io\/docs\/api#testname-fn-timeout..*/,
+      /.*Add a timeout value to this test to increase the timeout, if this is a long-running test. See https:\/\/jestjs.io\/docs\/api#testname-fn-timeout.+/,
       '<REPLACED>',
     )
     .replace(/.*Timeout - Async callback was not.*/, '<REPLACED>');
@@ -78,9 +114,7 @@ test('works with snapshot failures', () => {
 
   const result = normalizeDots(cleanStderr(stderr));
 
-  expect(
-    result.substring(0, result.indexOf('Snapshot Summary')),
-  ).toMatchSnapshot();
+  expect(result.slice(0, result.indexOf('Snapshot Summary'))).toMatchSnapshot();
 });
 
 test('works with snapshot failures with hint', () => {
@@ -88,9 +122,14 @@ test('works with snapshot failures with hint', () => {
 
   const result = normalizeDots(cleanStderr(stderr));
 
-  expect(
-    result.substring(0, result.indexOf('Snapshot Summary')),
-  ).toMatchSnapshot();
+  expect(result.slice(0, result.indexOf('Snapshot Summary'))).toMatchSnapshot();
+});
+
+test('works with AggregateError', () => {
+  const {stderr} = runJest(dir, ['aggregateError.test.js']);
+  const summary = normalizeDots(cleanStderr(stderr));
+
+  expect(summary).toMatchSnapshot();
 });
 
 test('works with error with cause', () => {
@@ -105,7 +144,7 @@ test('works with error with cause thrown outside tests', () => {
   const summary = normalizeDots(cleanStderr(stderr));
 
   const sanitizedSummary = summary
-    .replace(/ Suite\.f /g, ' f ') // added by jasmine runner
+    .replaceAll(' Suite.f ', ' f ') // added by jasmine runner
     .split('\n')
     .map(line => line.trim()) // jasmine runner does not come with the same indentation
     .join('\n');
@@ -113,8 +152,38 @@ test('works with error with cause thrown outside tests', () => {
   expect(
     // jasmine runner differ from circus one in this case, we just start
     // the comparison when the stack starts to be reported
-    sanitizedSummary.substring(sanitizedSummary.indexOf('error during f')),
+    sanitizedSummary.slice(sanitizedSummary.indexOf('error during f')),
   ).toMatchSnapshot();
+});
+
+test('includes error causes in JSON failureMessages', () => {
+  // Stderr cause coverage is handled by snapshot tests above; this assertion
+  // targets the structured JSON payload consumed by reporters and integrations.
+  const {json} = runJestJson(dir, ['errorWithCause.test.js']);
+
+  const result = json.testResults[0];
+  const failureMessages =
+    result.assertionResults.flatMap(result => result.failureMessages) ?? [];
+  const failureOutput = failureMessages.join('\n');
+
+  expect(failureMessages).toHaveLength(3);
+  expect(failureOutput).toContain('[cause]: Error: error during g');
+  expect(failureOutput).toContain('[cause]: here is the cause');
+});
+
+test('includes AggregateError inner errors in JSON failureMessages', () => {
+  const {json} = runJestJson(dir, ['aggregateError.test.js']);
+
+  const result = json.testResults[0];
+  const failureMessages =
+    result.assertionResults.flatMap(result => result.failureMessages) ?? [];
+  const failureOutput = failureMessages.join('\n');
+
+  expect(failureMessages).toHaveLength(2);
+  expect(failureOutput).toContain('[errors]: Error: inner A');
+  expect(failureOutput).toContain('[errors]: Error: inner B');
+  expect(failureOutput).toContain('[errors]: Error: ECONNREFUSED primary');
+  expect(failureOutput).toContain('[errors]: Error: ETIMEDOUT replica');
 });
 
 test('errors after test has completed', () => {

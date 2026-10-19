@@ -5,29 +5,28 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {Config} from '@jest/types';
+import {isNonNullable} from 'jest-util';
 
-const activeFilters = (
-  globalConfig: Config.GlobalConfig,
-  delimiter = '\n',
-): string => {
-  const {testNamePattern, testPathPattern} = globalConfig;
-  if (testNamePattern || testPathPattern) {
+const activeFilters = (globalConfig: Config.GlobalConfig): string => {
+  const {testNamePattern} = globalConfig;
+  const testPathPatterns = globalConfig.testPathPatterns;
+  if (testNamePattern || testPathPatterns.isSet()) {
     const filters = [
-      testPathPattern
-        ? chalk.dim('filename ') + chalk.yellow(`/${testPathPattern}/`)
+      testPathPatterns.isSet()
+        ? chalk.dim('filename ') + chalk.yellow(testPathPatterns.toPretty())
         : null,
       testNamePattern
         ? chalk.dim('test name ') + chalk.yellow(`/${testNamePattern}/`)
         : null,
     ]
-      .filter(f => f)
+      .filter(isNonNullable)
       .join(', ');
 
-    const messages = [`\n${chalk.bold('Active Filters: ')}${filters}`];
+    const messages = `\n${chalk.bold('Active Filters: ')}${filters}`;
 
-    return messages.filter(message => !!message).join(delimiter);
+    return messages;
   }
 
   return '';

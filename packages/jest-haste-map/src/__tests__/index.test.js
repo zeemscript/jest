@@ -13,11 +13,14 @@ function mockHashContents(contents) {
   return crypto.createHash('sha1').update(contents).digest('hex');
 }
 
-const mockIsWatchmanInstalled = jest.fn().mockResolvedValue(true);
+const mockGetWatchmanAvailability = jest
+  .fn()
+  .mockResolvedValue({installed: true, sockname: undefined});
 
-jest.mock('../lib/isWatchmanInstalled', () => ({
+jest.mock('../lib/watchmanSockname', () => ({
   __esModule: true,
-  default: mockIsWatchmanInstalled,
+  connectClientToSockname: jest.fn(),
+  getWatchmanAvailability: mockGetWatchmanAvailability,
 }));
 
 jest.mock('jest-worker', () => ({
@@ -45,7 +48,7 @@ jest.mock('../crawlers/watchman', () => ({
 
     for (const file in list) {
       if (
-        new RegExp(roots.join('|').replace(/\\/g, '\\\\')).test(file) &&
+        new RegExp(roots.join('|').replaceAll('\\', '\\\\')).test(file) &&
         !ignore(file)
       ) {
         const relativeFilePath = path.relative(rootDir, file);
@@ -78,7 +81,9 @@ const mockWatcherConstructor = jest.fn(root => {
   return mockEmitters[root];
 });
 
-jest.mock('../watchers/NodeWatcher', () => mockWatcherConstructor);
+jest.mock('../watchers/ParcelWatcher', () => ({
+  ParcelWatcher: mockWatcherConstructor,
+}));
 jest.mock('../watchers/WatchmanWatcher', () => mockWatcherConstructor);
 
 let mockChangedFiles;
@@ -130,7 +135,7 @@ const useBuitinsInContext = value => {
   switch (stringTag) {
     case '[object Map]':
       return new Map(
-        Array.from(value).map(([k, v]) => [
+        [...value].map(([k, v]) => [
           useBuitinsInContext(k),
           useBuitinsInContext(v),
         ]),
@@ -376,8 +381,8 @@ describe('HasteMap', () => {
 
     try {
       await (await HasteMap.create(config)).build();
-    } catch (err) {
-      expect(err.message).toBe(
+    } catch (error) {
+      expect(error.message).toBe(
         'jest-haste-map: the `ignorePattern` option must be a RegExp',
       );
     }
@@ -622,7 +627,7 @@ describe('HasteMap', () => {
         });
       });
 
-      mockIsWatchmanInstalled.mockClear();
+      mockGetWatchmanAvailability.mockClear();
 
       const hasteMap = await HasteMap.create({
         ...defaultConfig,
@@ -633,7 +638,7 @@ describe('HasteMap', () => {
 
       const data = (await hasteMap.build()).__hasteMapForTest;
 
-      expect(mockIsWatchmanInstalled).toHaveBeenCalledTimes(
+      expect(mockGetWatchmanAvailability).toHaveBeenCalledTimes(
         useWatchman ? 1 : 0,
       );
 
@@ -772,7 +777,7 @@ describe('HasteMap', () => {
       ).build();
     } catch {
       expect(
-        console.error.mock.calls[0][0].replace(/\\/g, '/'),
+        console.error.mock.calls[0][0].replaceAll('\\', '/'),
       ).toMatchSnapshot();
     }
   });
@@ -788,9 +793,11 @@ describe('HasteMap', () => {
 
     // Duplicate modules are removed so that it doesn't cause
     // non-determinism later on.
-    expect(data.map.get('Strawberry')[H.GENERIC_PLATFORM]).toBeUndefined();
+    expect(data.map.get('Strawberry')?.[H.GENERIC_PLATFORM]).toBeUndefined();
 
-    expect(console.warn.mock.calls[0][0].replace(/\\/g, '/')).toMatchSnapshot();
+    expect(
+      console.warn.mock.calls[0][0].replaceAll('\\', '/'),
+    ).toMatchSnapshot();
   });
 
   it('warns on duplicate module ids only once', async () => {
@@ -819,8 +826,8 @@ describe('HasteMap', () => {
           ...defaultConfig,
         })
       ).build();
-    } catch (err) {
-      expect(err.message).toBe(
+    } catch (error) {
+      expect(error.message).toBe(
         'Duplicated files or mocks. Please check the console for more info',
       );
     }
@@ -1095,9 +1102,8 @@ describe('HasteMap', () => {
 
   describe('duplicate modules', () => {
     beforeEach(async () => {
-      mockFs[
-        path.join('/', 'project', 'fruits', 'another', 'Strawberry.js')
-      ] = `
+      mockFs[path.join('/', 'project', 'fruits', 'another', 'Strawberry.js')] =
+        `
         const Blackberry = require("Blackberry");
       `;
 
@@ -1114,7 +1120,7 @@ describe('HasteMap', () => {
           }),
         }),
       );
-      expect(data.map.get('Strawberry')).toEqual({});
+      expect(data.map.get('Strawberry')).toBeUndefined();
     });
 
     it('recovers when a duplicate file is deleted', async () => {
@@ -1712,7 +1718,7 @@ describe('HasteMap', () => {
                 H.MODULE,
             }),
           );
-          expect(error.message.replace(/\\/g, '/')).toMatchSnapshot();
+          expect(error.message.replaceAll('\\', '/')).toMatchSnapshot();
         }
       }
 

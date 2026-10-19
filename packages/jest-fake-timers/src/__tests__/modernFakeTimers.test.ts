@@ -7,6 +7,7 @@
  */
 
 import {makeProjectConfig} from '@jest/test-utils';
+import type {TemporalDuration} from '@sinonjs/fake-timers';
 import FakeTimers from '../modernFakeTimers';
 
 describe('FakeTimers', () => {
@@ -14,8 +15,10 @@ describe('FakeTimers', () => {
     it('installs setTimeout mock', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -26,8 +29,10 @@ describe('FakeTimers', () => {
     it('installs clearTimeout mock', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -38,8 +43,10 @@ describe('FakeTimers', () => {
     it('installs setInterval mock', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -50,8 +57,10 @@ describe('FakeTimers', () => {
     it('installs clearInterval mock', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -63,10 +72,10 @@ describe('FakeTimers', () => {
       const origNextTick = () => {};
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick: origNextTick,
-        },
+        process: {nextTick: origNextTick},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -78,9 +87,11 @@ describe('FakeTimers', () => {
       const origSetImmediate = () => {};
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate: origSetImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -94,14 +105,44 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         clearImmediate: origClearImmediate,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate: origSetImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
       timers.useFakeTimers();
       expect(global.clearImmediate).not.toBe(origClearImmediate);
+    });
+
+    it('mocks requestAnimationFrame if it exists on global', () => {
+      const global = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+      expect(global.requestAnimationFrame).toBeDefined();
+    });
+
+    it('mocks cancelAnimationFrame if it exists on global', () => {
+      const global = {
+        Date,
+        cancelAnimationFrame: () => {},
+        clearInterval,
+        clearTimeout,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+      expect(global.cancelAnimationFrame).toBeDefined();
     });
   });
 
@@ -109,10 +150,10 @@ describe('FakeTimers', () => {
     it('runs all ticks, in order', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick: () => {},
-        },
+        process: {nextTick: () => {}},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
 
@@ -140,10 +181,10 @@ describe('FakeTimers', () => {
       const nextTick = jest.fn();
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick,
-        },
+        process: {nextTick},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
 
@@ -157,10 +198,10 @@ describe('FakeTimers', () => {
     it('only runs a scheduled callback once', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick: () => {},
-        },
+        process: {nextTick: () => {}},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
 
@@ -181,10 +222,10 @@ describe('FakeTimers', () => {
     it('throws before allowing infinite recursion', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick: () => {},
-        },
+        process: {nextTick: () => {}},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
 
@@ -211,8 +252,10 @@ describe('FakeTimers', () => {
     it('runs all timers in order', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -227,14 +270,14 @@ describe('FakeTimers', () => {
       const mock6 = jest.fn(() => runOrder.push('mock6'));
 
       global.setTimeout(mock1, 100);
-      global.setTimeout(mock2, NaN);
+      global.setTimeout(mock2, Number.NaN);
       global.setTimeout(mock3, 0);
       const intervalHandler = global.setInterval(() => {
         mock4();
         global.clearInterval(intervalHandler);
       }, 200);
-      global.setTimeout(mock5, Infinity);
-      global.setTimeout(mock6, -Infinity);
+      global.setTimeout(mock5, Number.POSITIVE_INFINITY);
+      global.setTimeout(mock6, Number.NEGATIVE_INFINITY);
 
       timers.runAllTimers();
       expect(runOrder).toEqual([
@@ -269,8 +312,10 @@ describe('FakeTimers', () => {
       const nativeSetTimeout = jest.fn();
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval: nativeSetTimeout,
         setTimeout: nativeSetTimeout,
       } as unknown as typeof globalThis;
 
@@ -282,8 +327,10 @@ describe('FakeTimers', () => {
     it('only runs a setTimeout callback once (ever)', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -303,8 +350,10 @@ describe('FakeTimers', () => {
     it('runs callbacks with arguments after the interval', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -323,8 +372,10 @@ describe('FakeTimers', () => {
 
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval: nativeSetTimeout,
         setTimeout: nativeSetTimeout,
       } as unknown as typeof globalThis;
 
@@ -345,8 +396,10 @@ describe('FakeTimers', () => {
     it('throws before allowing infinite recursion', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({
@@ -371,8 +424,10 @@ describe('FakeTimers', () => {
     it('also clears ticks', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -393,8 +448,10 @@ describe('FakeTimers', () => {
     it('runs timers in order', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -437,8 +494,10 @@ describe('FakeTimers', () => {
     it('does nothing when no timers have been scheduled', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -452,8 +511,10 @@ describe('FakeTimers', () => {
     it('runs timers in order', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -492,8 +553,10 @@ describe('FakeTimers', () => {
     it('run correct amount of steps', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -531,8 +594,10 @@ describe('FakeTimers', () => {
     it('setTimeout inside setTimeout', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -559,8 +624,10 @@ describe('FakeTimers', () => {
     it('does nothing when no timers have been scheduled', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -570,12 +637,224 @@ describe('FakeTimers', () => {
     });
   });
 
+  describe('advanceTimersToNextFrame', () => {
+    it('runs scheduled animation frame callbacks in order', () => {
+      const global = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const runOrder: Array<string> = [];
+      const mock1 = jest.fn(() => runOrder.push('mock1'));
+      const mock2 = jest.fn(() => runOrder.push('mock2'));
+      const mock3 = jest.fn(() => runOrder.push('mock3'));
+
+      global.requestAnimationFrame(mock1);
+      global.requestAnimationFrame(mock2);
+      global.requestAnimationFrame(mock3);
+
+      timers.advanceTimersToNextFrame();
+
+      expect(runOrder).toEqual(['mock1', 'mock2', 'mock3']);
+    });
+
+    it('should only run currently scheduled animation frame callbacks', () => {
+      const global = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const runOrder: Array<string> = [];
+      function run() {
+        runOrder.push('first-frame');
+
+        // scheduling another animation frame in the first frame
+        global.requestAnimationFrame(() => runOrder.push('second-frame'));
+      }
+
+      global.requestAnimationFrame(run);
+
+      // only the first frame should be executed
+      timers.advanceTimersToNextFrame();
+
+      expect(runOrder).toEqual(['first-frame']);
+
+      timers.advanceTimersToNextFrame();
+
+      expect(runOrder).toEqual(['first-frame', 'second-frame']);
+    });
+
+    it('should allow cancelling of scheduled animation frame callbacks', () => {
+      const global = {
+        Date,
+        cancelAnimationFrame: () => {},
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      const callback = jest.fn();
+      timers.useFakeTimers();
+
+      const timerId = global.requestAnimationFrame(callback);
+      global.cancelAnimationFrame(timerId);
+
+      timers.advanceTimersToNextFrame();
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('should only advance as much time is needed to get to the next frame', () => {
+      const global = {
+        Date,
+        cancelAnimationFrame: () => {},
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const runOrder: Array<string> = [];
+      const start = global.Date.now();
+
+      const callback = () => runOrder.push('frame');
+      global.requestAnimationFrame(callback);
+
+      // Advancing timers less than a frame (which is 16ms)
+      timers.advanceTimersByTime(6);
+      expect(global.Date.now()).toEqual(start + 6);
+
+      // frame not yet executed
+      expect(runOrder).toEqual([]);
+
+      // move timers forward to execute frame
+      timers.advanceTimersToNextFrame();
+
+      // frame has executed as time has moved forward 10ms to get to the 16ms frame time
+      expect(runOrder).toEqual(['frame']);
+      expect(global.Date.now()).toEqual(start + 16);
+    });
+
+    it('should execute any timers on the way to the animation frame', () => {
+      const global = {
+        Date,
+        cancelAnimationFrame: () => {},
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const runOrder: Array<string> = [];
+
+      global.requestAnimationFrame(() => runOrder.push('frame'));
+
+      // scheduling a timeout that will be executed on the way to the frame
+      global.setTimeout(() => runOrder.push('timeout'), 10);
+
+      // move timers forward to execute frame
+      timers.advanceTimersToNextFrame();
+
+      expect(runOrder).toEqual(['timeout', 'frame']);
+    });
+
+    it('should not execute any timers scheduled inside of an animation frame callback', () => {
+      const global = {
+        Date,
+        cancelAnimationFrame: () => {},
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const runOrder: Array<string> = [];
+
+      global.requestAnimationFrame(() => {
+        runOrder.push('frame');
+        // scheduling a timer inside of a frame
+        global.setTimeout(() => runOrder.push('timeout'), 1);
+      });
+
+      timers.advanceTimersToNextFrame();
+
+      // timeout not yet executed
+      expect(runOrder).toEqual(['frame']);
+
+      // validating that the timer will still be executed
+      timers.advanceTimersByTime(1);
+      expect(runOrder).toEqual(['frame', 'timeout']);
+    });
+
+    it('should call animation frame callbacks with the latest system time', () => {
+      const global = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        performance,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const callback = jest.fn();
+
+      global.requestAnimationFrame(callback);
+
+      timers.advanceTimersToNextFrame();
+
+      // `requestAnimationFrame` callbacks are called with a `DOMHighResTimeStamp`
+      expect(callback).toHaveBeenCalledWith(global.performance.now());
+    });
+  });
+
   describe('reset', () => {
     it('resets all pending setTimeouts', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -592,8 +871,10 @@ describe('FakeTimers', () => {
     it('resets all pending setIntervals', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -610,11 +891,11 @@ describe('FakeTimers', () => {
     it('resets all pending ticks callbacks', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
-        process: {
-          nextTick: () => {},
-        },
+        process: {nextTick: () => {}},
         setImmediate: () => {},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -632,8 +913,10 @@ describe('FakeTimers', () => {
     it('resets current advanceTimersByTime time cursor', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -649,6 +932,27 @@ describe('FakeTimers', () => {
       timers.advanceTimersByTime(50);
       expect(mock1).toHaveBeenCalledTimes(0);
     });
+
+    it('resets all scheduled animation frames', () => {
+      const global = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        process,
+        requestAnimationFrame: () => -1,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      const timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+
+      const mock1 = jest.fn();
+      global.requestAnimationFrame(mock1);
+
+      timers.reset();
+      timers.runAllTimers();
+      expect(mock1).toHaveBeenCalledTimes(0);
+    });
   });
 
   describe('runOnlyPendingTimers', () => {
@@ -657,9 +961,11 @@ describe('FakeTimers', () => {
 
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate: nativeSetImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
 
@@ -714,8 +1020,8 @@ describe('FakeTimers', () => {
         'mock1',
         'mock2',
         'mock2',
-        'mock3',
         'mock5',
+        'mock3',
         'mock1',
         'mock2',
       ]);
@@ -724,8 +1030,10 @@ describe('FakeTimers', () => {
     it('does not run timers that were cleared in another timer', () => {
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -780,8 +1088,10 @@ describe('FakeTimers', () => {
 
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process: {nextTick: nativeProcessNextTick},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -803,9 +1113,11 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         clearImmediate: nativeClearImmediate,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate: nativeSetImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -861,8 +1173,10 @@ describe('FakeTimers', () => {
 
       const global = {
         Date,
+        clearInterval,
         clearTimeout,
         process: {nextTick: nativeProcessNextTick},
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -884,9 +1198,11 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         clearImmediate: nativeClearImmediate,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate: nativeSetImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const fakeTimers = new FakeTimers({config: makeProjectConfig(), global});
@@ -910,9 +1226,11 @@ describe('FakeTimers', () => {
     beforeEach(() => {
       fakedGlobal = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
         setImmediate,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       timers = new FakeTimers({
@@ -965,8 +1283,10 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         Promise,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -991,8 +1311,10 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         Promise,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -1017,8 +1339,10 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         Promise,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -1045,8 +1369,10 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         Promise,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -1073,8 +1399,10 @@ describe('FakeTimers', () => {
       const global = {
         Date,
         Promise,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       const timers = new FakeTimers({config: makeProjectConfig(), global});
@@ -1091,6 +1419,48 @@ describe('FakeTimers', () => {
     });
   });
 
+  describe('setTimerTickMode', () => {
+    let global: typeof globalThis;
+    let timers: FakeTimers;
+    const realSetTimeout = setTimeout;
+    beforeEach(() => {
+      global = {
+        Date,
+        Promise,
+        clearInterval,
+        clearTimeout,
+        process,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      timers = new FakeTimers({config: makeProjectConfig(), global});
+      timers.useFakeTimers();
+    });
+
+    afterEach(() => {
+      timers.useRealTimers();
+    });
+
+    it('should advance the clock to next timer with nextAsync', async () => {
+      timers.setTimerTickMode({mode: 'nextAsync'});
+      await new Promise(resolve => global.setTimeout(resolve, 5000));
+      await new Promise(resolve => global.setTimeout(resolve, 5000));
+      await new Promise(resolve => global.setTimeout(resolve, 5000));
+      await new Promise(resolve => global.setTimeout(resolve, 5000));
+      // test should not time out
+    });
+
+    it('should advance the clock in real time with delta', async () => {
+      timers.setTimerTickMode({delta: 10, mode: 'interval'});
+      const spy = jest.fn();
+      global.setTimeout(spy, 10);
+      await new Promise(resolve => realSetTimeout(resolve, 5));
+      expect(spy).not.toHaveBeenCalled();
+      await new Promise(resolve => realSetTimeout(resolve, 5));
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
   describe('now', () => {
     let timers: FakeTimers;
     let fakedGlobal: typeof globalThis;
@@ -1098,8 +1468,10 @@ describe('FakeTimers', () => {
     beforeEach(() => {
       fakedGlobal = {
         Date,
+        clearInterval,
         clearTimeout,
         process,
+        setInterval,
         setTimeout,
       } as unknown as typeof globalThis;
       timers = new FakeTimers({
@@ -1147,6 +1519,72 @@ describe('FakeTimers', () => {
       const after = Date.now();
       expect(now).toBeGreaterThanOrEqual(before);
       expect(now).toBeLessThanOrEqual(after);
+    });
+  });
+
+  describe('Temporal', () => {
+    const epoch_ms = new Date('2026-01-01T00:00:00Z').getTime();
+    let timers: FakeTimers;
+    let fakedGlobal: typeof globalThis;
+
+    beforeEach(() => {
+      fakedGlobal = {
+        Date,
+        clearInterval,
+        clearTimeout,
+        process,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      timers = new FakeTimers({
+        config: makeProjectConfig(),
+        global: fakedGlobal,
+      });
+    });
+
+    afterEach(() => {
+      timers.useRealTimers();
+    });
+
+    it('setSystemTime accepts an object with epochMilliseconds', () => {
+      timers.useFakeTimers();
+      timers.setSystemTime({epochMilliseconds: epoch_ms});
+      expect(fakedGlobal.Date.now()).toBe(epoch_ms);
+    });
+
+    it('useFakeTimers({now}) accepts an object with epochMilliseconds', () => {
+      timers.useFakeTimers({now: {epochMilliseconds: epoch_ms}});
+      expect(fakedGlobal.Date.now()).toBe(epoch_ms);
+    });
+
+    it('advanceTimersByTime accepts an object with total()', () => {
+      timers.useFakeTimers({now: 0});
+      timers.advanceTimersByTime({
+        total: ({unit}) => (unit === 'millisecond' ? 5000 : 5),
+      } as TemporalDuration);
+      expect(fakedGlobal.Date.now()).toBe(5000);
+    });
+
+    it('advanceTimersByTimeAsync accepts an object with total()', async () => {
+      const asyncGlobal = {
+        Date,
+        Promise,
+        clearInterval,
+        clearTimeout,
+        process,
+        setInterval,
+        setTimeout,
+      } as unknown as typeof globalThis;
+      const asyncTimers = new FakeTimers({
+        config: makeProjectConfig(),
+        global: asyncGlobal,
+      });
+      asyncTimers.useFakeTimers({now: 0});
+      await asyncTimers.advanceTimersByTimeAsync({
+        total: ({unit}) => (unit === 'millisecond' ? 5000 : 5),
+      } as TemporalDuration);
+      expect(asyncGlobal.Date.now()).toBe(5000);
+      asyncTimers.useRealTimers();
     });
   });
 });

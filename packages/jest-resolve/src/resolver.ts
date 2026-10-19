@@ -5,40 +5,43 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/* eslint-disable local/prefer-spread-eventually */
-
-import * as path from 'path';
-import chalk = require('chalk');
-import slash = require('slash');
+import {isBuiltin} from 'node:module';
+import * as path from 'node:path';
+import chalk from 'chalk';
+import slash from 'slash';
 import type {IModuleMap} from 'jest-haste-map';
-import {tryRealpath} from 'jest-util';
+import {requireOrImportModule, tryRealpath} from 'jest-util';
 import ModuleNotFoundError from './ModuleNotFoundError';
 import defaultResolver, {
-  AsyncResolver,
-  Resolver as ResolverInterface,
-  SyncResolver,
+  type AsyncResolver,
+  type Resolver as ResolverInterface,
+  type SyncResolver,
+  baseResolver,
+  defaultAsyncResolver,
 } from './defaultResolver';
 import {clearFsCache} from './fileWalkers';
-import isBuiltinModule from './isBuiltinModule';
 import nodeModulesPaths, {GlobalPaths} from './nodeModulesPaths';
-import shouldLoadAsEsm, {clearCachedLookups} from './shouldLoadAsEsm';
+import shouldLoadAsEsm, {
+  clearCachedLookups,
+  isExplicitlyCommonjsPackage,
+} from './shouldLoadAsEsm';
 import type {ResolverConfig} from './types';
 
 export type FindNodeModuleConfig = {
   basedir: string;
-  conditions?: Array<string>;
-  extensions?: Array<string>;
-  moduleDirectory?: Array<string>;
-  paths?: Array<string>;
+  conditions?: ReadonlyArray<string>;
+  extensions?: ReadonlyArray<string>;
+  moduleDirectory?: ReadonlyArray<string>;
+  paths?: ReadonlyArray<string>;
   resolver?: string | null;
   rootDir?: string;
   throwIfNotFound?: boolean;
 };
 
 export type ResolveModuleConfig = {
-  conditions?: Array<string>;
+  conditions?: ReadonlyArray<string>;
   skipNodeResolution?: boolean;
-  paths?: Array<string>;
+  paths?: ReadonlyArray<string>;
 };
 
 const NATIVE_PLATFORM = 'native';
@@ -60,6 +63,10 @@ export default class Resolver {
   private readonly _moduleNameCache: Map<string, string>;
   private readonly _modulePathCache: Map<string, Array<string>>;
   private readonly _supportsNativePlatform: boolean;
+  private readonly _extensions: Array<string>;
+  private readonly _isCoreModuleCache: Map<string, boolean>;
+  private _canResolveSync: boolean | undefined;
+  private _hasDistinctAsyncResolver: boolean | undefined;
 
   constructor(moduleMap: IModuleMap, options: ResolverConfig) {
     this._options = {
@@ -81,6 +88,22 @@ export default class Resolver {
     this._moduleIDCache = new Map();
     this._moduleNameCache = new Map();
     this._modulePathCache = new Map();
+    this._isCoreModuleCache = new Map();
+
+    const configuredExtensions = this._options.extensions ?? [];
+    const extensions = [...configuredExtensions];
+    if (this._supportsNativePlatform) {
+      extensions.unshift(
+        ...configuredExtensions.map(ext => `.${NATIVE_PLATFORM}${ext}`),
+      );
+    }
+    const defaultPlatform = this._options.defaultPlatform;
+    if (defaultPlatform) {
+      extensions.unshift(
+        ...configuredExtensions.map(ext => `.${defaultPlatform}${ext}`),
+      );
+    }
+    this._extensions = extensions;
   }
 
   static ModuleNotFoundError = ModuleNotFoundError;
@@ -119,21 +142,30 @@ export default class Resolver {
     }
 
     const paths = options.paths;
+    // we always wanna throw if it's an internal import
+    const throwOnMiss = options.throwIfNotFound || path.startsWith('#');
+
+    const resolverOptions = {
+      basedir: options.basedir,
+      conditions: options.conditions,
+      defaultAsyncResolver,
+      defaultResolver,
+      extensions: options.extensions,
+      moduleDirectory: options.moduleDirectory,
+      paths: paths ? [...(nodePaths || []), ...paths] : nodePaths,
+      rootDir: options.rootDir,
+    };
 
     try {
-      return resolver(path, {
-        basedir: options.basedir,
-        conditions: options.conditions,
-        defaultResolver,
-        extensions: options.extensions,
-        moduleDirectory: options.moduleDirectory,
-        paths: paths ? (nodePaths || []).concat(paths) : nodePaths,
-        rootDir: options.rootDir,
-      });
-    } catch (e) {
-      // we always wanna throw if it's an internal import
-      if (options.throwIfNotFound || path.startsWith('#')) {
-        throw e;
+      // A swallowed miss doesn't need the Error the throwing contract builds.
+      if (resolver === defaultResolver && !throwOnMiss) {
+        return baseResolver(path, resolverOptions).path ?? null;
+      }
+
+      return resolver(path, resolverOptions);
+    } catch (error) {
+      if (throwOnMiss) {
+        throw error;
       }
     }
     return null;
@@ -144,7 +176,13 @@ export default class Resolver {
     options: FindNodeModuleConfig,
   ): Promise<string | null> {
     const resolverModule = loadResolver(options.resolver);
-    let resolver: ResolverInterface = defaultResolver;
+    // Without a custom resolver this is the sync `defaultResolver`, and
+    // resolution stays sync from here: awaiting one resolution per module
+    // costs about 6x more per specifier, and the sync entry points
+    // (`require`, `require(esm)`, the sync ESM graph walker) cannot await at
+    // all. Node made `import.meta.resolve` sync for the same reasons.
+    const isDefaultResolver = resolverModule === defaultResolver;
+    let resolver: ResolverInterface = defaultAsyncResolver;
 
     if (typeof resolverModule === 'function') {
       resolver = resolverModule;
@@ -162,22 +200,30 @@ export default class Resolver {
     }
 
     const paths = options.paths;
+    // we always wanna throw if it's an internal import
+    const throwOnMiss = options.throwIfNotFound || path.startsWith('#');
+
+    const resolverOptions = {
+      basedir: options.basedir,
+      conditions: options.conditions,
+      defaultAsyncResolver,
+      defaultResolver,
+      extensions: options.extensions,
+      moduleDirectory: options.moduleDirectory,
+      paths: paths ? [...(nodePaths || []), ...paths] : nodePaths,
+      rootDir: options.rootDir,
+    };
 
     try {
-      const result = await resolver(path, {
-        basedir: options.basedir,
-        conditions: options.conditions,
-        defaultResolver,
-        extensions: options.extensions,
-        moduleDirectory: options.moduleDirectory,
-        paths: paths ? (nodePaths || []).concat(paths) : nodePaths,
-        rootDir: options.rootDir,
-      });
-      return result;
-    } catch (e: unknown) {
-      // we always wanna throw if it's an internal import
-      if (options.throwIfNotFound || path.startsWith('#')) {
-        throw e;
+      // A swallowed miss doesn't need the Error the throwing contract builds.
+      if (isDefaultResolver && !throwOnMiss) {
+        return baseResolver(path, resolverOptions).path ?? null;
+      }
+
+      return await resolver(path, resolverOptions);
+    } catch (error: unknown) {
+      if (throwOnMiss) {
+        throw error;
       }
     }
     return null;
@@ -185,6 +231,8 @@ export default class Resolver {
 
   // unstable as it should be replaced by https://github.com/nodejs/modules/issues/393, and we don't want people to use it
   static unstable_shouldLoadAsEsm = shouldLoadAsEsm;
+
+  static unstable_isExplicitlyCommonjs = isExplicitlyCommonjsPackage;
 
   resolveModuleFromDirIfExists(
     dirname: string,
@@ -340,6 +388,56 @@ export default class Resolver {
     return null;
   }
 
+  // True when synchronous module resolution is available with the configured
+  // resolver. False when a user has configured a resolver that only exports
+  // an `async` hook - in that case `findNodeModule` silently falls back to
+  // the default resolver, which will not honor the user's mappings, so
+  // callers that need correctness should defer to the async API.
+  //
+  // The contract is "plain function or `.sync` hook = sync"; an `async
+  // function` in either slot is a user-side contract violation we don't
+  // defend against here.
+  //
+  // Memoized: the resolver config is immutable per-`Resolver`. A throwing
+  // `loadResolver` (malformed user resolver) is treated as `false` so
+  // callers route to the async path, which will surface the actual error.
+  canResolveSync(): boolean {
+    if (this._canResolveSync != null) return this._canResolveSync;
+    let result: boolean;
+    try {
+      const resolverModule = loadResolver(this._options.resolver);
+      result =
+        typeof resolverModule === 'function' ||
+        typeof resolverModule.sync === 'function';
+    } catch {
+      result = false;
+    }
+    this._canResolveSync = result;
+    return result;
+  }
+
+  // True when the configured resolver exports an `async` hook next to its
+  // sync interface. The two hooks may resolve differently, so a sync
+  // resolution failure is not authoritative for callers that can retry
+  // through the async API.
+  hasDistinctAsyncResolver(): boolean {
+    if (this._hasDistinctAsyncResolver != null) {
+      return this._hasDistinctAsyncResolver;
+    }
+    let result: boolean;
+    try {
+      const resolverModule = loadResolver(this._options.resolver);
+      result =
+        typeof resolverModule !== 'function' &&
+        typeof resolverModule.async === 'function' &&
+        typeof resolverModule.sync === 'function';
+    } catch {
+      result = false;
+    }
+    this._hasDistinctAsyncResolver = result;
+    return result;
+  }
+
   resolveModule(
     from: string,
     moduleName: string,
@@ -347,7 +445,7 @@ export default class Resolver {
   ): string {
     const dirname = path.dirname(from);
     const module =
-      this.resolveStubModuleName(from, moduleName) ||
+      this.resolveStubModuleName(from, moduleName, options) ||
       this.resolveModuleFromDirIfExists(dirname, moduleName, options);
     if (module) return module;
 
@@ -364,7 +462,7 @@ export default class Resolver {
   ): Promise<string> {
     const dirname = path.dirname(from);
     const module =
-      (await this.resolveStubModuleNameAsync(from, moduleName)) ||
+      (await this.resolveStubModuleNameAsync(from, moduleName, options)) ||
       (await this.resolveModuleFromDirIfExistsAsync(
         dirname,
         moduleName,
@@ -390,26 +488,19 @@ export default class Resolver {
   ) {
     const paths = options?.paths || this._options.modulePaths;
     const moduleDirectory = this._options.moduleDirectories;
-    const stringifiedOptions = options ? JSON.stringify(options) : '';
-    const key = dirname + path.delimiter + moduleName + stringifiedOptions;
-    const defaultPlatform = this._options.defaultPlatform;
-    const extensions = this._options.extensions.slice();
-
-    if (this._supportsNativePlatform) {
-      extensions.unshift(
-        ...this._options.extensions.map(ext => `.${NATIVE_PLATFORM}${ext}`),
-      );
-    }
-    if (defaultPlatform) {
-      extensions.unshift(
-        ...this._options.extensions.map(ext => `.${defaultPlatform}${ext}`),
-      );
-    }
+    const key =
+      dirname + path.delimiter + moduleName + stringifyOptions(options);
 
     const skipResolution =
       options && options.skipNodeResolution && !moduleName.includes(path.sep);
 
-    return {extensions, key, moduleDirectory, paths, skipResolution};
+    return {
+      extensions: this._extensions,
+      key,
+      moduleDirectory,
+      paths,
+      skipResolution,
+    };
   }
 
   /**
@@ -419,7 +510,7 @@ export default class Resolver {
     const parts = moduleName.split('/');
     const hastePackage = this.getPackage(parts.shift()!);
     if (hastePackage) {
-      return path.join.apply(path, [path.dirname(hastePackage)].concat(parts));
+      return path.join(path.dirname(hastePackage), ...parts);
     }
     return null;
   }
@@ -437,13 +528,15 @@ export default class Resolver {
   private _getMapModuleName(matches: RegExpMatchArray | null) {
     return matches
       ? (moduleName: string) =>
-          moduleName.replace(
-            /\$([0-9]+)/g,
-            (_, index) => matches[parseInt(index, 10)],
+          moduleName.replaceAll(
+            /\$(\d+)/g,
+            (_, index) => matches[Number.parseInt(index, 10)] || '',
           )
       : (moduleName: string) => moduleName;
   }
 
+  // Matched against the specifier as written, so `fs` and `node:fs` are
+  // separately targetable. A pattern for both is `^(node:)?fs$`.
   private _isAliasModule(moduleName: string): boolean {
     const moduleNameMapper = this._options.moduleNameMapper;
     if (!moduleNameMapper) {
@@ -454,11 +547,19 @@ export default class Resolver {
   }
 
   isCoreModule(moduleName: string): boolean {
-    return (
-      this._options.hasCoreModules &&
-      (isBuiltinModule(moduleName) || moduleName.startsWith('node:')) &&
-      !this._isAliasModule(moduleName)
-    );
+    let result = this._isCoreModuleCache.get(moduleName);
+    if (result == null) {
+      result =
+        this._options.hasCoreModules &&
+        isBuiltin(moduleName) &&
+        !this._isAliasModule(moduleName);
+      this._isCoreModuleCache.set(moduleName, result);
+    }
+    return result;
+  }
+
+  normalizeCoreModuleSpecifier(specifier: string): string {
+    return specifier.startsWith('node:') ? specifier.slice(5) : specifier;
   }
 
   getModule(name: string): string | null {
@@ -484,28 +585,60 @@ export default class Resolver {
     );
   }
 
-  getMockModule(from: string, name: string): string | null {
-    const mock = this._moduleMap.getMockModule(name);
+  getMockModule(
+    from: string,
+    name: string,
+    options?: Pick<ResolveModuleConfig, 'conditions'>,
+  ): string | null {
+    const mock = this._lookupManualMock(name);
     if (mock) {
       return mock;
-    } else {
-      const moduleName = this.resolveStubModuleName(from, name);
-      if (moduleName) {
-        return this.getModule(moduleName) || moduleName;
-      }
+    }
+
+    const resolvedName = this.resolveStubModuleName(from, name, options);
+    if (resolvedName) {
+      return this._lookupManualMock(resolvedName);
     }
     return null;
   }
 
-  async getMockModuleAsync(from: string, name: string): Promise<string | null> {
+  // A colon is not a legal filename character on Windows, so a manual mock for
+  // `node:fs` lives at `__mocks__/fs`. Both specifier forms have to find it.
+  private _lookupManualMock(name: string): string | null {
     const mock = this._moduleMap.getMockModule(name);
     if (mock) {
       return mock;
-    } else {
-      const moduleName = await this.resolveStubModuleNameAsync(from, name);
-      if (moduleName) {
-        return this.getModule(moduleName) || moduleName;
-      }
+    }
+
+    if (!this.isCoreModule(name)) {
+      return null;
+    }
+
+    const normalized = this.normalizeCoreModuleSpecifier(name);
+    if (normalized === name) {
+      return null;
+    }
+
+    return this._moduleMap.getMockModule(normalized) ?? null;
+  }
+
+  async getMockModuleAsync(
+    from: string,
+    name: string,
+    options: Pick<ResolveModuleConfig, 'conditions'>,
+  ): Promise<string | null> {
+    const mock = this._lookupManualMock(name);
+    if (mock) {
+      return mock;
+    }
+
+    const resolvedName = await this.resolveStubModuleNameAsync(
+      from,
+      name,
+      options,
+    );
+    if (resolvedName) {
+      return this._lookupManualMock(resolvedName);
     }
     return null;
   }
@@ -518,7 +651,7 @@ export default class Resolver {
 
     const moduleDirectory = this._options.moduleDirectories;
     const paths = nodeModulesPaths(from, {moduleDirectory});
-    if (paths[paths.length - 1] === undefined) {
+    if (paths.at(-1) === undefined) {
       // circumvent node-resolve bug that adds `undefined` as last item.
       paths.pop();
     }
@@ -538,10 +671,15 @@ export default class Resolver {
     virtualMocks: Map<string, boolean>,
     from: string,
     moduleName = '',
-    options?: ResolveModuleConfig,
+    options: ResolveModuleConfig,
   ): string {
-    const stringifiedOptions = options ? JSON.stringify(options) : '';
-    const key = from + path.delimiter + moduleName + stringifiedOptions;
+    const stringifiedOptions = stringifyOptions(options);
+    const key = this._getModuleIDCacheKey(
+      virtualMocks,
+      from,
+      moduleName,
+      stringifiedOptions,
+    );
     const cachedModuleID = this._moduleIDCache.get(key);
     if (cachedModuleID) {
       return cachedModuleID;
@@ -554,7 +692,7 @@ export default class Resolver {
       moduleName,
       options,
     );
-    const mockPath = this._getMockPath(from, moduleName);
+    const mockPath = this._getMockPath(from, moduleName, options);
 
     const sep = path.delimiter;
     const id =
@@ -572,16 +710,18 @@ export default class Resolver {
     virtualMocks: Map<string, boolean>,
     from: string,
     moduleName = '',
-    options?: ResolveModuleConfig,
+    options: ResolveModuleConfig,
   ): Promise<string> {
-    const stringifiedOptions = options ? JSON.stringify(options) : '';
-    const key = from + path.delimiter + moduleName + stringifiedOptions;
+    const stringifiedOptions = stringifyOptions(options);
+    const key = this._getModuleIDCacheKey(
+      virtualMocks,
+      from,
+      moduleName,
+      stringifiedOptions,
+    );
     const cachedModuleID = this._moduleIDCache.get(key);
     if (cachedModuleID) {
       return cachedModuleID;
-    }
-    if (moduleName.startsWith('data:')) {
-      return moduleName;
     }
 
     const moduleType = this._getModuleType(moduleName);
@@ -591,7 +731,7 @@ export default class Resolver {
       moduleName,
       options,
     );
-    const mockPath = await this._getMockPathAsync(from, moduleName);
+    const mockPath = await this._getMockPathAsync(from, moduleName, options);
 
     const sep = path.delimiter;
     const id =
@@ -605,6 +745,26 @@ export default class Resolver {
     return id;
   }
 
+  private _getModuleIDCacheKey(
+    virtualMocks: Map<string, boolean>,
+    from: string,
+    moduleName: string,
+    stringifiedOptions: string,
+  ): string {
+    const isVirtualMock =
+      virtualMocks.size > 0 &&
+      virtualMocks.get(this.getModulePath(from, moduleName)) === true;
+
+    return (
+      from +
+      path.delimiter +
+      moduleName +
+      stringifiedOptions +
+      path.delimiter +
+      String(isVirtualMock)
+    );
+  }
+
   private _getModuleType(moduleName: string): 'node' | 'user' {
     return this.isCoreModule(moduleName) ? 'node' : 'user';
   }
@@ -613,15 +773,15 @@ export default class Resolver {
     virtualMocks: Map<string, boolean>,
     from: string,
     moduleName: string,
-    options?: ResolveModuleConfig,
+    options: ResolveModuleConfig,
   ): string | null {
     if (this.isCoreModule(moduleName)) {
-      return moduleName;
+      return this.normalizeCoreModuleSpecifier(moduleName);
     }
     if (moduleName.startsWith('data:')) {
       return moduleName;
     }
-    return this._isModuleResolved(from, moduleName)
+    return this._isModuleResolved(from, moduleName, options)
       ? this.getModule(moduleName)
       : this._getVirtualMockPath(virtualMocks, from, moduleName, options);
   }
@@ -630,10 +790,10 @@ export default class Resolver {
     virtualMocks: Map<string, boolean>,
     from: string,
     moduleName: string,
-    options?: ResolveModuleConfig,
+    options: ResolveModuleConfig,
   ): Promise<string | null> {
     if (this.isCoreModule(moduleName)) {
-      return moduleName;
+      return this.normalizeCoreModuleSpecifier(moduleName);
     }
     if (moduleName.startsWith('data:')) {
       return moduleName;
@@ -641,39 +801,45 @@ export default class Resolver {
     const isModuleResolved = await this._isModuleResolvedAsync(
       from,
       moduleName,
+      options,
     );
     return isModuleResolved
       ? this.getModule(moduleName)
       : this._getVirtualMockPathAsync(virtualMocks, from, moduleName, options);
   }
 
-  private _getMockPath(from: string, moduleName: string): string | null {
-    return !this.isCoreModule(moduleName)
-      ? this.getMockModule(from, moduleName)
-      : null;
+  private _getMockPath(
+    from: string,
+    moduleName: string,
+    options: Pick<ResolveModuleConfig, 'conditions'>,
+  ): string | null {
+    return this.isCoreModule(moduleName)
+      ? null
+      : this.getMockModule(from, moduleName, options);
   }
 
   private async _getMockPathAsync(
     from: string,
     moduleName: string,
+    options: Pick<ResolveModuleConfig, 'conditions'>,
   ): Promise<string | null> {
-    return !this.isCoreModule(moduleName)
-      ? this.getMockModuleAsync(from, moduleName)
-      : null;
+    return this.isCoreModule(moduleName)
+      ? null
+      : this.getMockModuleAsync(from, moduleName, options);
   }
 
   private _getVirtualMockPath(
     virtualMocks: Map<string, boolean>,
     from: string,
     moduleName: string,
-    options?: ResolveModuleConfig,
+    options: ResolveModuleConfig,
   ): string {
     const virtualMockPath = this.getModulePath(from, moduleName);
     return virtualMocks.get(virtualMockPath)
       ? virtualMockPath
       : moduleName
-      ? this.resolveModule(from, moduleName, options)
-      : from;
+        ? this.resolveModule(from, moduleName, options)
+        : from;
   }
 
   private async _getVirtualMockPathAsync(
@@ -686,77 +852,89 @@ export default class Resolver {
     return virtualMocks.get(virtualMockPath)
       ? virtualMockPath
       : moduleName
-      ? this.resolveModuleAsync(from, moduleName, options)
-      : from;
+        ? this.resolveModuleAsync(from, moduleName, options)
+        : from;
   }
 
-  private _isModuleResolved(from: string, moduleName: string): boolean {
+  private _isModuleResolved(
+    from: string,
+    moduleName: string,
+    options: Pick<ResolveModuleConfig, 'conditions'>,
+  ): boolean {
     return !!(
-      this.getModule(moduleName) || this.getMockModule(from, moduleName)
+      this.getModule(moduleName) ||
+      this.getMockModule(from, moduleName, options)
     );
   }
 
   private async _isModuleResolvedAsync(
     from: string,
     moduleName: string,
+    options: Pick<ResolveModuleConfig, 'conditions'>,
   ): Promise<boolean> {
     return !!(
       this.getModule(moduleName) ||
-      (await this.getMockModuleAsync(from, moduleName))
+      (await this.getMockModuleAsync(from, moduleName, options))
     );
   }
 
-  resolveStubModuleName(from: string, moduleName: string): string | null {
+  resolveStubModuleName(
+    from: string,
+    moduleName: string,
+    options?: Pick<ResolveModuleConfig, 'conditions'>,
+  ): string | null {
+    const moduleNameMapper = this._options.moduleNameMapper;
+    if (moduleNameMapper == null || moduleNameMapper.length === 0) {
+      return null;
+    }
+
     const dirname = path.dirname(from);
 
     const {extensions, moduleDirectory, paths} = this._prepareForResolution(
       dirname,
       moduleName,
     );
-    const moduleNameMapper = this._options.moduleNameMapper;
     const resolver = this._options.resolver;
 
-    if (moduleNameMapper) {
-      for (const {moduleName: mappedModuleName, regex} of moduleNameMapper) {
-        if (regex.test(moduleName)) {
-          // Note: once a moduleNameMapper matches the name, it must result
-          // in a module, or else an error is thrown.
-          const matches = moduleName.match(regex);
-          const mapModuleName = this._getMapModuleName(matches);
-          const possibleModuleNames = Array.isArray(mappedModuleName)
-            ? mappedModuleName
-            : [mappedModuleName];
-          let module: string | null = null;
-          for (const possibleModuleName of possibleModuleNames) {
-            const updatedName = mapModuleName(possibleModuleName);
-
-            module =
-              this.getModule(updatedName) ||
-              Resolver.findNodeModule(updatedName, {
-                basedir: dirname,
-                extensions,
-                moduleDirectory,
-                paths,
-                resolver,
-                rootDir: this._options.rootDir,
-              });
-
-            if (module) {
-              break;
-            }
-          }
-
-          if (!module) {
-            throw createNoMappedModuleFoundError(
-              moduleName,
-              mapModuleName,
-              mappedModuleName,
-              regex,
+    for (const {moduleName: mappedModuleName, regex} of moduleNameMapper) {
+      const matches = moduleName.match(regex);
+      if (matches) {
+        // Note: once a moduleNameMapper matches the name, it must result
+        // in a module, or else an error is thrown.
+        const mapModuleName = this._getMapModuleName(matches);
+        const possibleModuleNames = Array.isArray(mappedModuleName)
+          ? mappedModuleName
+          : [mappedModuleName];
+        let module: string | null = null;
+        for (const possibleModuleName of possibleModuleNames) {
+          const updatedName = mapModuleName(possibleModuleName);
+          module =
+            this.getModule(updatedName) ||
+            Resolver.findNodeModule(updatedName, {
+              basedir: dirname,
+              conditions: options?.conditions,
+              extensions,
+              moduleDirectory,
+              paths,
               resolver,
-            );
+              rootDir: this._options.rootDir,
+            });
+
+          if (module) {
+            break;
           }
-          return module;
         }
+
+        if (!module) {
+          throw createNoMappedModuleFoundError(
+            moduleName,
+            mapModuleName,
+            mappedModuleName,
+            regex,
+            resolver,
+          );
+        }
+        return module;
       }
     }
     return null;
@@ -765,61 +943,82 @@ export default class Resolver {
   async resolveStubModuleNameAsync(
     from: string,
     moduleName: string,
+    options?: Pick<ResolveModuleConfig, 'conditions'>,
   ): Promise<string | null> {
+    const moduleNameMapper = this._options.moduleNameMapper;
+    if (moduleNameMapper == null || moduleNameMapper.length === 0) {
+      return null;
+    }
+
     const dirname = path.dirname(from);
 
     const {extensions, moduleDirectory, paths} = this._prepareForResolution(
       dirname,
       moduleName,
     );
-    const moduleNameMapper = this._options.moduleNameMapper;
     const resolver = this._options.resolver;
 
-    if (moduleNameMapper) {
-      for (const {moduleName: mappedModuleName, regex} of moduleNameMapper) {
-        if (regex.test(moduleName)) {
-          // Note: once a moduleNameMapper matches the name, it must result
-          // in a module, or else an error is thrown.
-          const matches = moduleName.match(regex);
-          const mapModuleName = this._getMapModuleName(matches);
-          const possibleModuleNames = Array.isArray(mappedModuleName)
-            ? mappedModuleName
-            : [mappedModuleName];
-          let module: string | null = null;
-          for (const possibleModuleName of possibleModuleNames) {
-            const updatedName = mapModuleName(possibleModuleName);
+    for (const {moduleName: mappedModuleName, regex} of moduleNameMapper) {
+      const matches = moduleName.match(regex);
+      if (matches) {
+        // Note: once a moduleNameMapper matches the name, it must result
+        // in a module, or else an error is thrown.
+        const mapModuleName = this._getMapModuleName(matches);
+        const possibleModuleNames = Array.isArray(mappedModuleName)
+          ? mappedModuleName
+          : [mappedModuleName];
+        let module: string | null = null;
+        for (const possibleModuleName of possibleModuleNames) {
+          const updatedName = mapModuleName(possibleModuleName);
 
-            module =
-              this.getModule(updatedName) ||
-              (await Resolver.findNodeModuleAsync(updatedName, {
-                basedir: dirname,
-                extensions,
-                moduleDirectory,
-                paths,
-                resolver,
-                rootDir: this._options.rootDir,
-              }));
-
-            if (module) {
-              break;
-            }
-          }
-
-          if (!module) {
-            throw createNoMappedModuleFoundError(
-              moduleName,
-              mapModuleName,
-              mappedModuleName,
-              regex,
+          module =
+            this.getModule(updatedName) ||
+            (await Resolver.findNodeModuleAsync(updatedName, {
+              basedir: dirname,
+              conditions: options?.conditions,
+              extensions,
+              moduleDirectory,
+              paths,
               resolver,
-            );
+              rootDir: this._options.rootDir,
+            }));
+
+          if (module) {
+            break;
           }
-          return module;
         }
+
+        if (!module) {
+          throw createNoMappedModuleFoundError(
+            moduleName,
+            mapModuleName,
+            mappedModuleName,
+            regex,
+            resolver,
+          );
+        }
+        return module;
       }
     }
     return null;
   }
+}
+
+// Callers on the hot path pass long-lived options objects, so the
+// serialization for cache keys is memoized on object identity.
+const stringifiedOptionsCache = new WeakMap<object, string>();
+
+function stringifyOptions(options?: ResolveModuleConfig): string {
+  if (!options) {
+    return '';
+  }
+
+  let result = stringifiedOptionsCache.get(options);
+  if (result == null) {
+    result = JSON.stringify(options);
+    stringifiedOptionsCache.set(options, result);
+  }
+  return result;
 }
 
 const createNoMappedModuleFoundError = (
@@ -863,6 +1062,81 @@ type ResolverSyncObject = {sync: SyncResolver; async?: AsyncResolver};
 type ResolverAsyncObject = {sync?: SyncResolver; async: AsyncResolver};
 export type ResolverObject = ResolverSyncObject | ResolverAsyncObject;
 
+function asResolver(
+  loadedResolver: unknown,
+): SyncResolver | ResolverObject | null {
+  if (typeof loadedResolver === 'function') {
+    return loadedResolver as SyncResolver;
+  }
+
+  if (
+    typeof loadedResolver === 'object' &&
+    loadedResolver != null &&
+    ((loadedResolver as ResolverObject).sync != null ||
+      (loadedResolver as ResolverObject).async != null)
+  ) {
+    return loadedResolver as ResolverObject;
+  }
+
+  return null;
+}
+
+function toResolver(
+  resolver: string,
+  loadedResolver: unknown,
+): SyncResolver | ResolverObject {
+  if (loadedResolver == null) {
+    throw new Error(`Resolver located at ${resolver} does not export anything`);
+  }
+
+  const resolverModule = asResolver(loadedResolver);
+
+  if (resolverModule != null) {
+    return resolverModule;
+  }
+
+  // An ES module is seen as a module namespace object, so a resolver written
+  // as `export default` arrives on `default`. Look there before giving up.
+  if (typeof loadedResolver === 'object') {
+    const defaultExport = asResolver(
+      (loadedResolver as {default?: unknown}).default,
+    );
+
+    if (defaultExport != null) {
+      return defaultExport;
+    }
+  }
+
+  throw new Error(
+    `Resolver located at ${resolver} does not export a function or an object with "sync" and "async" props`,
+  );
+}
+
+// `Resolver.findNodeModule` is synchronous, but an ES module resolver can only
+// be loaded asynchronously - and one with a top-level await can never be
+// `require`d at all. Resolvers are therefore loaded ahead of time, once per
+// process, and read back out of here when resolution actually runs.
+const preloadedResolvers = new Map<string, SyncResolver | ResolverObject>();
+
+/**
+ * Load a user resolver so that later synchronous resolution can use it.
+ * Called from `normalize` in the main process and from the test worker's
+ * `setup`, both of which run before any module is resolved.
+ */
+export async function preloadResolver(
+  resolver: string | undefined | null,
+): Promise<void> {
+  if (resolver == null || preloadedResolvers.has(resolver)) {
+    return;
+  }
+
+  // Keep the namespace object intact: a resolver may expose `sync`/`async`
+  // as named exports rather than a default export.
+  const loadedResolver = await requireOrImportModule<unknown>(resolver, false);
+
+  preloadedResolvers.set(resolver, toResolver(resolver, loadedResolver));
+}
+
 function loadResolver(
   resolver: string | undefined | null,
 ): SyncResolver | ResolverObject {
@@ -870,24 +1144,28 @@ function loadResolver(
     return defaultResolver;
   }
 
-  const loadedResolver = require(resolver);
+  const preloaded = preloadedResolvers.get(resolver);
 
-  if (loadedResolver == null) {
-    throw new Error(`Resolver located at ${resolver} does not export anything`);
+  if (preloaded != null) {
+    return preloaded;
   }
 
-  if (typeof loadedResolver === 'function') {
-    return loadedResolver as SyncResolver;
-  }
+  // Not preloaded - an embedder built a `Resolver` without going through
+  // `normalize`. `require` still covers CommonJS, and ES modules too on the
+  // versions of Node that can `require` them.
+  try {
+    return toResolver(resolver, require(resolver));
+  } catch (error: any) {
+    if (
+      error.code === 'ERR_REQUIRE_ESM' ||
+      error.code === 'ERR_REQUIRE_ASYNC_MODULE'
+    ) {
+      throw new Error(
+        `Jest: resolver located at ${resolver} could not be loaded synchronously. Call \`preloadResolver\` from "jest-resolve" before resolving - a resolver with a top-level await always needs it, and so does any ES module on Node older than 20.19 / 22.12.`,
+        {cause: error},
+      );
+    }
 
-  if (
-    typeof loadedResolver === 'object' &&
-    (loadedResolver.sync != null || loadedResolver.async != null)
-  ) {
-    return loadedResolver as ResolverObject;
+    throw error;
   }
-
-  throw new Error(
-    `Resolver located at ${resolver} does not export a function or an object with "sync" and "async" props`,
-  );
 }

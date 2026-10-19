@@ -5,8 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {Context} from 'vm';
-import type {LegacyFakeTimers, ModernFakeTimers} from '@jest/fake-timers';
+import type {Context} from 'node:vm';
+import type {
+  LegacyFakeTimers,
+  ModernFakeTimers,
+  TemporalDurationLike,
+  TemporalEpochLike,
+} from '@jest/fake-timers';
 import type {Circus, Config, Global} from '@jest/types';
 import type {Mocked, ModuleMocker} from 'jest-mock';
 
@@ -16,6 +21,15 @@ export type EnvironmentContext = {
   testPath: string;
 };
 
+// `injectGlobals: false` drops the `jest` argument, which moves every
+// `sandboxInjectedGlobals` entry up one position.
+export type InjectedModuleArguments =
+  | [
+      jest: Jest,
+      ...sandboxInjectedGlobals: Array<Global.Global[keyof Global.Global]>,
+    ]
+  | [...sandboxInjectedGlobals: Array<Global.Global[keyof Global.Global]>];
+
 // Different Order than https://nodejs.org/api/modules.html#modules_the_module_wrapper , however needs to be in the form [jest-transform]ScriptTransformer accepts
 export type ModuleWrapper = (
   this: Module['exports'],
@@ -24,8 +38,7 @@ export type ModuleWrapper = (
   require: Module['require'],
   __dirname: string,
   __filename: Module['filename'],
-  jest?: Jest,
-  ...sandboxInjectedGlobals: Array<Global.Global[keyof Global.Global]>
+  ...injectedGlobals: InjectedModuleArguments
 ) => unknown;
 
 export interface JestImportMeta extends ImportMeta {
@@ -59,14 +72,24 @@ export interface Jest {
    * that have been queued via `setTimeout()` or `setInterval()`, and would be
    * executed within this time frame will be executed.
    */
-  advanceTimersByTime(msToRun: number): void;
+  advanceTimersByTime(msToRun: number | TemporalDurationLike): void;
   /**
    * Advances all timers by `msToRun` milliseconds, firing callbacks if necessary.
    *
    * @remarks
    * Not available when using legacy fake timers implementation.
    */
-  advanceTimersByTimeAsync(msToRun: number): Promise<void>;
+  advanceTimersByTimeAsync(
+    msToRun: number | TemporalDurationLike,
+  ): Promise<void>;
+  /**
+   * Advances all timers by the needed milliseconds to execute callbacks currently scheduled with `requestAnimationFrame`.
+   * `advanceTimersToNextFrame()` is a helpful way to execute code that is scheduled using `requestAnimationFrame`.
+   *
+   * @remarks
+   * Not available when using legacy fake timers implementation.
+   */
+  advanceTimersToNextFrame(): void;
   /**
    * Advances all timers by the needed milliseconds so that only the next
    * timeouts/intervals will run. Optionally, you can provide steps, so it will
@@ -74,7 +97,7 @@ export interface Jest {
    */
   advanceTimersToNextTimer(steps?: number): void;
   /**
-   * Advances the clock to the the moment of the first scheduled timer, firing it.
+   * Advances the clock to the moment of the first scheduled timer, firing it.
    * Optionally, you can provide steps, so it will run steps amount of
    * next timeouts/intervals.
    *
@@ -145,17 +168,6 @@ export interface Jest {
    * Creates a mock function. Optionally takes a mock implementation.
    */
   fn: ModuleMocker['fn'];
-  // TODO remove `genMockFromModule()` in Jest 30
-  /**
-   * Given the name of a module, use the automatic mocking system to generate a
-   * mocked version of the module for you.
-   *
-   * This is useful when you want to create a manual mock that extends the
-   * automatic mock's behavior.
-   *
-   * @deprecated Use `jest.createMockFromModule()` instead
-   */
-  genMockFromModule<T = unknown>(moduleName: string): Mocked<T>;
   /**
    * When mocking time, `Date.now()` will also be mocked. If you for some reason
    * need access to the real current time, you can invoke this function.
@@ -229,6 +241,16 @@ export interface Jest {
    */
   now(): number;
   /**
+   * Registers a callback function that is invoked whenever a mock is generated for a module.
+   * This callback is passed the module path and the newly created mock object, and must return
+   * the (potentially modified) mock object.
+   *
+   * If multiple callbacks are registered, they will be called in the order they were added.
+   * Each callback receives the result of the previous callback as the `moduleMock` parameter,
+   * making it possible to apply sequential transformations.
+   */
+  onGenerateMock<T>(cb: (modulePath: string, moduleMock: T) => T): Jest;
+  /**
    * Replaces property on an object with another value.
    *
    * @remarks
@@ -290,12 +312,25 @@ export interface Jest {
    * the test to fail to the console, providing visibility on why a retry occurred.
    * retries is exhausted.
    *
+   * `waitBeforeRetry` is the number of milliseconds to wait before retrying
+   *
+   * `retryImmediately` is the flag to retry the failed test immediately after
+   * failure.
+   *
+   * `entireDescribe` is the flag to retry all tests and hooks in the describe
+   * block where `retryTimes` is called
+   *
    * @remarks
    * Only available with `jest-circus` runner.
    */
   retryTimes(
     numRetries: number,
-    options?: {logErrorsBeforeRetry?: boolean},
+    options?: {
+      entireDescribe?: boolean;
+      logErrorsBeforeRetry?: boolean;
+      retryImmediately?: boolean;
+      waitBeforeRetry?: number;
+    },
   ): Jest;
   /**
    * Exhausts tasks queued by `setImmediate()`.
@@ -359,7 +394,7 @@ export interface Jest {
    * @remarks
    * Not available when using legacy fake timers implementation.
    */
-  setSystemTime(now?: number | Date): void;
+  setSystemTime(now?: number | Date | TemporalEpochLike): void;
   /**
    * Set the default timeout interval for tests and before/after hooks in
    * milliseconds.
@@ -387,6 +422,12 @@ export interface Jest {
    */
   unmock(moduleName: string): Jest;
   /**
+   * Indicates that the module system should never return a mocked version of
+   * the specified module when it is being imported (e.g. that it should always
+   * return the real module).
+   */
+  unstable_unmockModule(moduleName: string): Jest;
+  /**
    * Instructs Jest to use fake versions of the global date, performance,
    * time and timer APIs. Fake timers implementation is backed by
    * [`@sinonjs/fake-timers`](https://github.com/sinonjs/fake-timers).
@@ -403,4 +444,25 @@ export interface Jest {
    * performance, time and timer APIs.
    */
   useRealTimers(): Jest;
+  /**
+   * Updates the mode of advancing timers when using fake timers.
+   *
+   * @param config The configuration to use for advancing timers
+   *
+   * When the mode is 'interval', timers will be advanced automatically by the [delta]
+   * milliseconds every [delta] milliseconds of real time. The default delta is 20 milliseconds.
+   *
+   * When mode is 'nextAsync', configures whether timers advance automatically to the next timer in the queue after each macrotask.
+   * This mode differs from 'interval' in that it advances all the way to the next timer, regardless
+   * of how far in the future that timer is scheduled (e.g. advanceTimersToNextTimerAsync).
+   *
+   * When mode is 'manual' (the default), timers will not advance automatically. Instead,
+   * timers must be advanced using APIs such as `advanceTimersToNextTimer`, `advanceTimersByTime`, etc.
+   *
+   * @remarks
+   * Not available when using legacy fake timers implementation.
+   */
+  setTimerTickMode(
+    config: {mode: 'manual' | 'nextAsync'} | {mode: 'interval'; delta?: number},
+  ): Jest;
 }

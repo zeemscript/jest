@@ -6,19 +6,24 @@
  */
 /// <reference lib="es2021.WeakRef" />
 
-import {promisify} from 'util';
-import {setFlagsFromString} from 'v8';
-import {runInNewContext} from 'vm';
-import {isPrimitive} from 'jest-get-type';
+import {promisify} from 'node:util';
+import {getHeapSnapshot, setFlagsFromString} from 'node:v8';
+import {runInNewContext} from 'node:vm';
+import {isPrimitive} from '@jest/get-type';
 import {format as prettyFormat} from 'pretty-format';
+
+interface LeakDetectorOptions {
+  shouldGenerateV8HeapSnapshot: boolean;
+}
 
 const tick = promisify(setImmediate);
 
 export default class LeakDetector {
   private _isReferenceBeingHeld: boolean;
+  private _shouldGenerateV8HeapSnapshot: boolean;
   private readonly _finalizationRegistry?: FinalizationRegistry<undefined>;
 
-  constructor(value: unknown) {
+  constructor(value: unknown, opt?: LeakDetectorOptions) {
     if (isPrimitive(value)) {
       throw new TypeError(
         [
@@ -36,7 +41,11 @@ export default class LeakDetector {
 
     this._isReferenceBeingHeld = true;
 
+    this._shouldGenerateV8HeapSnapshot =
+      opt?.shouldGenerateV8HeapSnapshot ?? true;
+
     // Ensure value is not leaked by the closure created by the "weak" callback.
+    // eslint-disable-next-line no-useless-assignment
     value = null;
   }
 
@@ -48,11 +57,23 @@ export default class LeakDetector {
       await tick();
     }
 
+    if (this._isReferenceBeingHeld) {
+      if (this._shouldGenerateV8HeapSnapshot) {
+        // Triggering a heap snapshot is more aggressive than just calling `global.gc()`,
+        // but it's also quite slow. Only do it if we still think we're leaking.
+        // See: https://github.com/nodejs/node/pull/48510#issuecomment-1719289759
+        getHeapSnapshot();
+      }
+
+      for (let i = 0; i < 10; i++) {
+        await tick();
+      }
+    }
+
     return this._isReferenceBeingHeld;
   }
 
   private _runGarbageCollector() {
-    // @ts-expect-error: not a function on `globalThis`
     const isGarbageCollectorHidden = globalThis.gc == null;
 
     // GC is usually hidden, so we have to expose it before running.

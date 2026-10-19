@@ -66,7 +66,9 @@ export default class ReporterDispatcher {
     options: ReporterOnStartOptions,
   ): Promise<void> {
     for (const reporter of this._reporters) {
-      reporter.onRunStart && (await reporter.onRunStart(results, options));
+      if (reporter.onRunStart) {
+        await reporter.onRunStart(results, options);
+      }
     }
   }
 
@@ -106,12 +108,12 @@ export default class ReporterDispatcher {
   // Return a list of last errors for every reporter
   getErrors(): Array<Error> {
     return this._reporters.reduce<Array<Error>>((list, reporter) => {
-      const error = reporter.getLastError && reporter.getLastError();
-      return error ? list.concat(error) : list;
+      const error = reporter.getLastError?.();
+      return error ? [...list, error] : list;
     }, []);
   }
 
   hasErrors(): boolean {
-    return this.getErrors().length !== 0;
+    return this.getErrors().length > 0;
   }
 }

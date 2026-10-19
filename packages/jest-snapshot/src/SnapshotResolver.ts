@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import chalk = require('chalk');
+import * as path from 'node:path';
+import chalk from 'chalk';
 import {createTranspilingRequire} from '@jest/transform';
 import type {Config} from '@jest/types';
 import {interopRequireDefault} from 'jest-util';
@@ -92,11 +92,11 @@ async function createCustomSnapshotResolver(
     ['resolveTestPath', 'function'],
     ['testPathForConsistencyCheck', 'string'],
   ];
-  keys.forEach(([propName, requiredType]) => {
+  for (const [propName, requiredType] of keys) {
     if (typeof custom[propName] !== requiredType) {
       throw new TypeError(mustImplement(propName, requiredType));
     }
-  });
+  }
 
   const customResolver: SnapshotResolver = {
     resolveSnapshotPath: (testPath: string) =>

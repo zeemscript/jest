@@ -4,8 +4,9 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-import path = require('path');
-import execa = require('execa');
+import path from 'path';
+import execa from 'execa';
+import {onNodeVersions} from '@jest/test-utils';
 import type {ReadJestConfigOptions, readInitialOptions} from 'jest-config';
 
 function resolveFixture(...pathSegments: Array<string>) {
@@ -46,59 +47,47 @@ describe('readInitialOptions', () => {
     expect(config).toEqual({jestConfig: 'jest.config.js', rootDir});
     expect(configPath).toEqual(configFile);
   });
-  test('should read a jest.config.js file', async () => {
-    const configFile = resolveFixture('js-config', 'jest.config.js');
-    const rootDir = resolveFixture('js-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
+
+  test.each([
+    ['js-config', 'jest.config.js', 'jest.config.js'],
+    ['pkg-config', 'package.json', 'package.json'],
+    ['ts-node-config', 'jest.config.ts', 'jest.config.ts'],
+    ['ts-esbuild-register-config', 'jest.config.ts', 'jest.config.ts'],
+    ['mjs-config', 'jest.config.mjs', 'jest.config.mjs'],
+    ['json-config', 'jest.config.json', 'jest.config.json'],
+    ['async-config', 'jest.config.js', 'async-config'],
+  ])(
+    'should read %s/%s file',
+    async (directory: string, filename: string, configString: string) => {
+      const configFile = resolveFixture(directory, filename);
+      const rootDir = resolveFixture(directory);
+      const {config, configPath} = await proxyReadInitialOptions(undefined, {
+        cwd: rootDir,
+      });
+      expect(config).toEqual({jestConfig: configString, rootDir});
+      expect(configPath).toEqual(configFile);
+    },
+  );
+
+  onNodeVersions('^22.18 || >=23.6', () => {
+    test('should read mts-config/jest.config.mts file', async () => {
+      const configFile = resolveFixture('mts-config', 'jest.config.mts');
+      const rootDir = resolveFixture('mts-config');
+      const {config, configPath} = await proxyReadInitialOptions(undefined, {
+        cwd: rootDir,
+      });
+      expect(config).toEqual({jestConfig: 'jest.config.mts', rootDir});
+      expect(configPath).toEqual(configFile);
     });
-    expect(config).toEqual({jestConfig: 'jest.config.js', rootDir});
-    expect(configPath).toEqual(configFile);
   });
-  test('should read a package.json file', async () => {
-    const configFile = resolveFixture('pkg-config', 'package.json');
-    const rootDir = resolveFixture('pkg-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
+
+  onNodeVersions('<22.18', () => {
+    test('should fail to read mts-config/jest.config.mts with a clear error', async () => {
+      const rootDir = resolveFixture('mts-config');
+      await expect(
+        proxyReadInitialOptions(undefined, {cwd: rootDir}),
+      ).rejects.toThrow(/jest\.config\.mts requires native TypeScript support/);
     });
-    expect(config).toEqual({jestConfig: 'package.json', rootDir});
-    expect(configPath).toEqual(configFile);
-  });
-  test('should read a jest.config.ts file', async () => {
-    const configFile = resolveFixture('ts-config', 'jest.config.ts');
-    const rootDir = resolveFixture('ts-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
-    });
-    expect(config).toEqual({jestConfig: 'jest.config.ts', rootDir});
-    expect(configPath).toEqual(configFile);
-  });
-  test('should read a jest.config.mjs file', async () => {
-    const configFile = resolveFixture('mjs-config', 'jest.config.mjs');
-    const rootDir = resolveFixture('mjs-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
-    });
-    expect(config).toEqual({jestConfig: 'jest.config.mjs', rootDir});
-    expect(configPath).toEqual(configFile);
-  });
-  test('should read a jest.config.json file', async () => {
-    const configFile = resolveFixture('json-config', 'jest.config.json');
-    const rootDir = resolveFixture('json-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
-    });
-    expect(config).toEqual({jestConfig: 'jest.config.json', rootDir});
-    expect(configPath).toEqual(configFile);
-  });
-  test('should read a jest config exporting an async function', async () => {
-    const configFile = resolveFixture('async-config', 'jest.config.js');
-    const rootDir = resolveFixture('async-config');
-    const {config, configPath} = await proxyReadInitialOptions(undefined, {
-      cwd: rootDir,
-    });
-    expect(config).toEqual({jestConfig: 'async-config', rootDir});
-    expect(configPath).toEqual(configFile);
   });
 
   test('should be able to skip config reading, instead read from cwd', async () => {
@@ -119,6 +108,18 @@ describe('readInitialOptions', () => {
       rootDir: path.dirname(expectedConfigFile),
     });
     expect(configPath).toEqual(expectedConfigFile);
+  });
+
+  onNodeVersions('<22.6', () => {
+    test('should give an error when using unsupported loader', async () => {
+      const cwd = resolveFixture('ts-loader-config');
+      const error: Error = await proxyReadInitialOptions(undefined, {
+        cwd,
+      }).catch(error => error);
+      expect(error.message).toContain(
+        "Jest: 'ts-loader' is not a valid TypeScript configuration loader.",
+      );
+    });
   });
 
   test('should give an error when there are multiple config files', async () => {

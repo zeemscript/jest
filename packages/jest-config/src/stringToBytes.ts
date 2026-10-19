@@ -30,10 +30,10 @@ function stringToBytes(
   }
 
   if (typeof input === 'string') {
-    if (isNaN(Number.parseFloat(input.slice(-1)))) {
+    if (Number.isNaN(Number.parseFloat(input.slice(-1)))) {
       // eslint-disable-next-line prefer-const
       let [, numericString, trailingChars] =
-        input.match(/(.*?)([^0-9.-]+)$/i) || [];
+        input.match(/(.*?)([^\d.-]+)$/i) || [];
 
       if (trailingChars && numericString) {
         const numericValue = Number.parseFloat(numericString);
@@ -68,7 +68,9 @@ function stringToBytes(
   }
 
   if (typeof input === 'number') {
-    if (input <= 1 && input > 0) {
+    if (input === 0) {
+      return 0;
+    } else if (input <= 1 && input > 0) {
       if (percentageReference) {
         return Math.floor(input * percentageReference);
       } else {

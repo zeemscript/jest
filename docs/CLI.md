@@ -146,6 +146,33 @@ Automatically clear mock calls, instances, contexts and results before every tes
 
 A glob pattern relative to `rootDir` matching the files that coverage info needs to be collected from.
 
+### `--collectTests`
+
+Discover and print all test suites and test names without executing them. Jest loads each test file, evaluates the top-level `describe` blocks to register tests, then exits before running any test code or lifecycle hooks.
+
+Output is a tree of file paths with their nested describe and test names, followed by a summary of the total counts. Skipped and todo tests are annotated, and any file that throws while loading is reported with its error (and the exit code is non-zero):
+
+```
+path/to/my.test.ts
+  My suite
+    passes
+    skips [skipped]
+    write later [todo]
+
+Test suites: 1
+Tests:       3 total, 1 runnable, 1 skipped, 1 todo
+```
+
+Parametrized tests declared with [`test.each`](GlobalAPI.md#testeachtablename-fn-timeout) / `describe.each` are expanded to one entry per case, and each collected test is categorized exactly as a real run would categorize it:
+
+- a test that would run is reported in the `passed` bucket and flagged `wouldRun: true` (it was selected but never executed);
+- [`test.skip`](GlobalAPI.md#testskipname-fn), tests inside a skipped `describe`, tests deselected by `test.only`, and tests excluded by `--testNamePattern` are reported as `pending`;
+- [`test.todo`](GlobalAPI.md#testtodoname) is reported as `todo`.
+
+Because every test is accounted for in the same bucket an actual run would use, the counts reported by `--collectTests` match those of a run in which every selected test passes — so it can be used to count tests without executing them, including under `--testNamePattern`.
+
+Use `--json` to get machine-readable output instead. The JSON uses the same shape as a normal run, including `numTotalTests`, `numPassedTests`, `numPendingTests` and `numTodoTests`, and each assertion carries the `wouldRun` flag described above.
+
 ### `--colors`
 
 Forces test results output highlighting even if stdout is not a TTY.
@@ -194,13 +221,14 @@ Alias: `-e`. Use this flag to show full diffs and errors instead of a patch.
 
 ### `--filter=<file>`
 
-Path to a module exporting a filtering function. This asynchronous function receives a list of test paths which can be manipulated to exclude tests from running by returning an object with shape `{ filtered: Array<{ test: string }> }`. Especially useful when used in conjunction with a testing infrastructure to filter known broken tests, e.g.
+Path to a module exporting a filtering function. This asynchronous function receives a list of test paths which can be manipulated to exclude tests from running and must return an object with shape `{ filtered: Array<string> }` containing the tests that should be run by Jest. Especially useful when used in conjunction with a testing infrastructure to filter known broken tests.
 
 ```js title="my-filter.js"
+// This filter when applied will only run tests ending in .spec.js (not the best way to do it, but it's just an example):
+const filteringFunction = testPath => testPath.endsWith('.spec.js');
+
 module.exports = testPaths => {
-  const allowedPaths = testPaths
-    .filter(filteringFunction)
-    .map(test => ({test})); // [{ test: "path1.spec.js" }, { test: "path2.spec.js" }, etc]
+  const allowedPaths = testPaths.filter(filteringFunction); // ["path1.spec.js", "path2.spec.js", etc]
 
   return {
     filtered: allowedPaths,
@@ -229,10 +257,6 @@ Show the help information, similar to this page.
 ### `--ignoreProjects <project1> ... <projectN>`
 
 Ignore the tests of the specified projects. Jest uses the attribute `displayName` in the configuration to identify each project. If you use this option, you should provide a `displayName` to all your projects.
-
-### `--init`
-
-Generate a basic configuration file. Based on your project, Jest will ask you a few questions that will help to generate a `jest.config.js` file with a short description for each option.
 
 ### `--injectGlobals`
 
@@ -286,11 +310,15 @@ Disables stack trace in test results output.
 
 ### `--notify`
 
-Activates notifications for test results. Good for when you don't want your consciousness to be able to focus on anything except JavaScript testing.
+Activates native OS notifications for test results. Good for when you don't want your consciousness to be able to focus on anything except JavaScript testing. To display the notifications Jest needs the [`node-notifier`](https://github.com/mikaelbr/node-notifier) package, which must be installed separately.
 
 ### `--onlyChanged`
 
 Alias: `-o`. Attempts to identify which tests to run based on which files have changed in the current repository. Only works if you're running tests in a git/hg repository at the moment and requires a static dependency graph (ie. no dynamic requires).
+
+### `--onlyFailures`
+
+Alias: `-f`. Run tests that failed in the previous execution.
 
 ### `--openHandlesTimeout=<milliseconds>`
 
@@ -406,6 +434,8 @@ jest --seed=1324
 
 If this option is not specified Jest will randomly generate the value. You can use the [`--showSeed`](#--showseed) flag to print the seed in the test report summary.
 
+Jest uses the seed internally for shuffling the order in which test suites are run. If the [`--randomize`](#--randomize) option is used, the seed is also used for shuffling the order of tests within each `describe` block. When dealing with flaky tests, rerunning with the same seed might help reproduce the failure.
+
 :::
 
 ### `--selectProjects <project1> ... <projectN>`
@@ -414,7 +444,7 @@ Run the tests of the specified projects. Jest uses the attribute `displayName` i
 
 ### `--setupFilesAfterEnv <path1> ... <pathN>`
 
-A list of paths to modules that run some code to configure or to set up the testing framework before each test. Beware that files imported by the setup scripts will not be mocked during testing.
+A list of paths to modules that run some code to configure or to set up the testing framework before each test file. Beware that files imported by the setup scripts will not be mocked during testing.
 
 ### `--shard`
 
@@ -458,7 +488,7 @@ Adds a `location` field to test results. Useful if you want to report the locati
 
 :::note
 
-In the resulting object `column` is 0-indexed while `line` is not.
+`line` is 1-indexed. `column` is 1-indexed with the default `jest-circus` runner, but 0-indexed with `jest-jasmine2`. Both will be 1-indexed in Jest 31, matching the positions V8 reports in a stack trace and through [`CallSite`](https://nodejs.org/api/util.html#utilgetcallsitesframecount-options).
 
 ```json
 {
@@ -485,11 +515,11 @@ The regex is matched against the full name, which is a combination of the test n
 
 ### `--testPathIgnorePatterns=<regex>|[array]`
 
-A single or array of regexp pattern strings that are tested against all tests paths before executing the test. Contrary to `--testPathPattern`, it will only run those tests with a path that does not match with the provided regexp expressions.
+A single or array of regexp pattern strings that are tested against all tests paths before executing the test. Contrary to `--testPathPatterns`, it will only run those tests with a path that does not match with the provided regexp expressions.
 
 To pass as an array use escaped parentheses and space delimited regexps such as `\(/node_modules/ /tests/e2e/\)`. Alternatively, you can omit parentheses by combining regexps into a single regexp like `/node_modules/|/tests/e2e/`. These two examples are equivalent.
 
-### `--testPathPattern=<regex>`
+### `--testPathPatterns=<regex>`
 
 A regexp pattern string that is matched against all tests paths before executing the test. On Windows, you will need to use `/` as a path separator or escape `\` as `\\`.
 
@@ -521,6 +551,14 @@ Display individual test results with the test suite hierarchy.
 
 Alias: `-v`. Print the version and exit.
 
+### `--waitForUnhandledRejections`
+
+Gives one event loop turn to handle `rejectionHandled`, `uncaughtException` or `unhandledRejection`.
+
+Without this flag Jest may report false-positive errors (e.g. actually handled rejection reported) or not report actually unhandled rejection (or report it for different test case).
+
+This option may add a noticeable overhead for fast test suites.
+
 ### `--watch`
 
 Watch files for changes and rerun tests related to changed files. If you want to re-run all tests when a file has changed, use the `--watchAll` option instead.
@@ -544,6 +582,10 @@ Use `--no-watchAll` (or `--watchAll=false`) to explicitly disable the watch mode
 ### `--watchman`
 
 Whether to use [`watchman`](https://facebook.github.io/watchman/) for file crawling. Defaults to `true`. Disable using `--no-watchman`.
+
+### `--workerGracefulExitTimeout=<number>`
+
+Timeout in milliseconds for worker processes to exit gracefully after tests complete. Workers that do not exit in time are force-killed. Default: `500`.
 
 ### `--workerThreads`
 

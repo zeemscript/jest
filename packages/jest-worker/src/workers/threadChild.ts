@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {isMainThread, parentPort} from 'worker_threads';
+import {isMainThread, parentPort} from 'node:worker_threads';
 import {isPromise} from 'jest-util';
 import {
   CHILD_MESSAGE_CALL,
@@ -13,15 +13,17 @@ import {
   CHILD_MESSAGE_END,
   CHILD_MESSAGE_INITIALIZE,
   CHILD_MESSAGE_MEM_USAGE,
-  ChildMessageCall,
-  ChildMessageInitialize,
+  type ChildMessageCall,
+  type ChildMessageInitialize,
   PARENT_MESSAGE_CLIENT_ERROR,
-  PARENT_MESSAGE_ERROR,
+  type PARENT_MESSAGE_ERROR,
   PARENT_MESSAGE_MEM_USAGE,
   PARENT_MESSAGE_OK,
   PARENT_MESSAGE_SETUP_ERROR,
-  ParentMessageMemUsage,
+  type ParentMessageMemUsage,
 } from '../types';
+import {isDataCloneError} from './isDataCloneError';
+import {packMessage} from './safeMessageTransferring';
 
 type UnknownFunction = (...args: Array<unknown>) => unknown | Promise<unknown>;
 
@@ -112,7 +114,24 @@ function reportSuccess(result: unknown) {
     throw new Error('Child can only be used on a forked process');
   }
 
-  parentPort!.postMessage([PARENT_MESSAGE_OK, result]);
+  try {
+    parentPort!.postMessage([PARENT_MESSAGE_OK, result]);
+  } catch (error) {
+    let resolvedError = error;
+    // Try to handle https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal
+    // for `symbols` and `functions`
+    if (isDataCloneError(error)) {
+      try {
+        parentPort!.postMessage([PARENT_MESSAGE_OK, packMessage(result)]);
+        return;
+      } catch (secondTryError) {
+        resolvedError = secondTryError;
+      }
+    }
+    // Handling it here to avoid unhandled rejection
+    // which is hard to distinguish on the parent side
+    reportClientError(resolvedError as Error);
+  }
 }
 
 function reportClientError(error: Error) {
@@ -195,8 +214,8 @@ function execFunction(
 
   try {
     result = fn.apply(ctx, args);
-  } catch (err: any) {
-    onError(err);
+  } catch (error: any) {
+    onError(error);
 
     return;
   }

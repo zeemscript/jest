@@ -8,6 +8,8 @@
 
 import {List, OrderedMap, OrderedSet, Record} from 'immutable';
 import {stringify} from 'jest-matcher-utils';
+import {createContext, runInContext} from 'vm';
+import {equals} from '../jasmineUtils';
 import {
   arrayBufferEquality,
   emptyObject,
@@ -118,7 +120,7 @@ describe('getPath()', () => {
 });
 
 describe('getObjectSubset', () => {
-  [
+  for (const [object, subset, expected] of [
     [{a: 'b', c: 'd'}, {a: 'd'}, {a: 'b'}],
     [{a: [1, 2], b: 'b'}, {a: [3, 4]}, {a: [1, 2]}],
     [[{a: 'b', c: 'd'}], [{a: 'z'}], [{a: 'b'}]],
@@ -129,7 +131,7 @@ describe('getObjectSubset', () => {
     ],
     [{a: [1]}, {a: [1, 2]}, {a: [1]}],
     [new Date('2015-11-30'), new Date('2016-12-30'), new Date('2015-11-30')],
-  ].forEach(([object, subset, expected]) => {
+  ]) {
     test(
       `expect(getObjectSubset(${stringify(object)}, ${stringify(subset)}))` +
         `.toEqual(${stringify(expected)})`,
@@ -137,7 +139,7 @@ describe('getObjectSubset', () => {
         expect(getObjectSubset(object, subset)).toEqual(expected);
       },
     );
-  });
+  }
 
   describe('returns the object instance if the subset has no extra properties', () => {
     test('Date', () => {
@@ -355,6 +357,82 @@ describe('subsetEquality()', () => {
       ).toBe(false);
     });
   });
+
+  describe('matching subsets with symbols', () => {
+    describe('same symbol', () => {
+      test('objects to not match with value diff', () => {
+        const symbol = Symbol('foo');
+        expect(subsetEquality({[symbol]: 1}, {[symbol]: 2})).toBe(false);
+      });
+
+      test('objects to match with non-enumerable symbols', () => {
+        const symbol = Symbol('foo');
+        const foo = {};
+        Object.defineProperty(foo, symbol, {
+          enumerable: false,
+          value: 1,
+        });
+        const bar = {};
+        Object.defineProperty(bar, symbol, {
+          enumerable: false,
+          value: 2,
+        });
+        expect(subsetEquality(foo, bar)).toBe(true);
+      });
+    });
+
+    describe('different symbol', () => {
+      test('objects to not match with same value', () => {
+        expect(subsetEquality({[Symbol('foo')]: 1}, {[Symbol('foo')]: 2})).toBe(
+          false,
+        );
+      });
+      test('objects to match with non-enumerable symbols', () => {
+        const foo = {};
+        Object.defineProperty(foo, Symbol('foo'), {
+          enumerable: false,
+          value: 1,
+        });
+        const bar = {};
+        Object.defineProperty(bar, Symbol('foo'), {
+          enumerable: false,
+          value: 2,
+        });
+        expect(subsetEquality(foo, bar)).toBe(true);
+      });
+    });
+  });
+
+  describe('subset is not object with keys', () => {
+    test('returns true if subset has keys', () => {
+      expect(subsetEquality({foo: 'bar'}, {foo: 'bar'})).toBe(true);
+    });
+    test('returns true if subset has Symbols', () => {
+      const symbol = Symbol('foo');
+      expect(subsetEquality({[symbol]: 'bar'}, {[symbol]: 'bar'})).toBe(true);
+    });
+    test('returns undefined if subset has no keys', () => {
+      expect(subsetEquality('foo', 'bar')).toBeUndefined();
+    });
+    test('returns undefined if subset is null', () => {
+      expect(subsetEquality({foo: 'bar'}, null)).toBeUndefined();
+    });
+    test('returns undefined if subset is Error', () => {
+      expect(subsetEquality({foo: 'bar'}, new Error())).toBeUndefined();
+    });
+    test('returns undefined if subset is Array', () => {
+      expect(subsetEquality({foo: 'bar'}, [])).toBeUndefined();
+    });
+    test('returns undefined if subset is Date', () => {
+      expect(subsetEquality({foo: 'bar'}, new Date())).toBeUndefined();
+    });
+    test('returns undefined if subset is Set', () => {
+      expect(subsetEquality({foo: 'bar'}, new Set())).toBeUndefined();
+    });
+    test('returns undefined if subset is Map', () => {
+      expect(subsetEquality({foo: 'bar'}, new Map())).toBeUndefined();
+    });
+  });
 });
 
 describe('iterableEquality', () => {
@@ -545,11 +623,134 @@ describe('iterableEquality', () => {
     const b = new TestRecord().set('dummy', 'data');
     expect(iterableEquality(a, b)).toBe(true);
   });
+
+  test('returns true when given a symbols keys within equal objects', () => {
+    const KEY = Symbol();
+
+    const a = {
+      [Symbol.iterator]: () => ({next: () => ({done: true})}),
+      [KEY]: [],
+    };
+    const b = {
+      [Symbol.iterator]: () => ({next: () => ({done: true})}),
+      [KEY]: [],
+    };
+
+    expect(iterableEquality(a, b)).toBe(true);
+  });
+
+  test('returns false when given a symbols keys within inequal objects', () => {
+    const KEY = Symbol();
+
+    const a = {
+      [Symbol.iterator]: () => ({next: () => ({done: true})}),
+      [KEY]: [1],
+    };
+    const b = {
+      [Symbol.iterator]: () => ({next: () => ({done: true})}),
+      [KEY]: [],
+    };
+
+    expect(iterableEquality(a, b)).toBe(false);
+  });
+
+  test('does not throw when iterating an object with a TypedArray iterator', () => {
+    const badIterable = {
+      [Symbol.iterator]: Uint8Array.prototype[Symbol.iterator],
+    };
+
+    expect(() => iterableEquality(badIterable, badIterable)).not.toThrow();
+    // Returns undefined so equals() can fall through to Object.is / property checks.
+    expect(iterableEquality(badIterable, badIterable)).toBeUndefined();
+    // Same reference must still be considered equal via equals().
+    expect(equals(badIterable, badIterable, [iterableEquality])).toBe(true);
+  });
 });
 
 describe('typeEquality', () => {
   test('returns undefined if given mock.calls and []', () => {
     expect(typeEquality(jest.fn().mock.calls, [])).toBeUndefined();
+  });
+
+  test('returns undefined for cross-realm plain objects', () => {
+    const context = createContext({});
+    const otherRealmObject = runInContext('({key: "test"})', context);
+    expect(typeEquality(otherRealmObject, {key: 'test'})).toBeUndefined();
+  });
+
+  test('returns undefined for cross-realm Maps', () => {
+    const context = createContext({});
+    const otherRealmMap = runInContext('new Map([["key", "value"]])', context);
+    expect(
+      typeEquality(otherRealmMap, new Map([['key', 'value']])),
+    ).toBeUndefined();
+  });
+
+  test('returns undefined for cross-realm Sets', () => {
+    const context = createContext({});
+    const otherRealmSet = runInContext('new Set(["test"])', context);
+    expect(typeEquality(otherRealmSet, new Set(['test']))).toBeUndefined();
+  });
+
+  test('returns undefined for cross-realm Dates', () => {
+    const context = createContext({});
+    const otherRealmDate = runInContext('new Date("2023-01-01")', context);
+    expect(
+      typeEquality(otherRealmDate, new Date('2023-01-01')),
+    ).toBeUndefined();
+  });
+
+  test('returns undefined for cross-realm RegExps', () => {
+    const context = createContext({});
+    const otherRealmRegExp = runInContext('/test/gi', context);
+    expect(typeEquality(otherRealmRegExp, /test/gi)).toBeUndefined();
+  });
+
+  test('returns false for different user-defined classes with same name', () => {
+    class Child {
+      a: number;
+      constructor(a: number) {
+        this.a = a;
+      }
+    }
+    const OtherChild = class Child {
+      a: number;
+      constructor(a: number) {
+        this.a = a;
+      }
+    };
+    expect(typeEquality(new Child(1), new OtherChild(1))).toBe(false);
+  });
+});
+
+describe('iterableEquality (cross-realm)', () => {
+  test('returns true for cross-realm Sets with same values', () => {
+    const context = createContext({});
+    const otherRealmSet = runInContext('new Set([1, 2, 3])', context);
+    expect(iterableEquality(otherRealmSet, new Set([1, 2, 3]))).toBe(true);
+  });
+
+  test('returns true for cross-realm Maps with same entries', () => {
+    const context = createContext({});
+    const otherRealmMap = runInContext(
+      'new Map([["a", 1], ["b", 2]])',
+      context,
+    );
+    expect(
+      iterableEquality(
+        otherRealmMap,
+        new Map([
+          ['a', 1],
+          ['b', 2],
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  test('returns false for cross-realm Sets with different values', () => {
+    const context = createContext({});
+    const otherRealmSet = runInContext('new Set([1, 2])', context);
+    expect(iterableEquality(otherRealmSet, new Set([1, 2, 3]))).toBe(false);
   });
 });
 
@@ -563,12 +764,77 @@ describe('arrayBufferEquality', () => {
   test('returns false when given non-matching buffers', () => {
     const a = Uint8Array.from([2, 4]).buffer;
     const b = Uint16Array.from([1, 7]).buffer;
-    expect(arrayBufferEquality(a, b)).not.toBeTruthy();
+    expect(arrayBufferEquality(a, b)).toBe(false);
+  });
+
+  test('returns false when given matching buffers of different byte length', () => {
+    const a = Uint8Array.from([1, 2]).buffer;
+    const b = Uint16Array.from([1, 2]).buffer;
+    expect(arrayBufferEquality(a, b)).toBe(false);
   });
 
   test('returns true when given matching buffers', () => {
     const a = Uint8Array.from([1, 2]).buffer;
     const b = Uint8Array.from([1, 2]).buffer;
-    expect(arrayBufferEquality(a, b)).toBeTruthy();
+    expect(arrayBufferEquality(a, b)).toBe(true);
   });
+
+  test('returns true when given matching DataView', () => {
+    const a = new DataView(Uint8Array.from([1, 2, 3]).buffer);
+    const b = new DataView(Uint8Array.from([1, 2, 3]).buffer);
+    expect(arrayBufferEquality(a, b)).toBe(true);
+  });
+
+  test('returns false when given non-matching DataView', () => {
+    const a = new DataView(Uint8Array.from([1, 2, 3]).buffer);
+    const b = new DataView(Uint8Array.from([3, 2, 1]).buffer);
+    expect(arrayBufferEquality(a, b)).toBe(false);
+  });
+
+  test('returns true when given matching Float64Array', () => {
+    const a = Float64Array.from(Array.from({length: 10}));
+    const b = Float64Array.from(Array.from({length: 10}));
+    expect(arrayBufferEquality(a, b)).toBe(true);
+  });
+
+  test('returns false when given non-matching Float64Array', () => {
+    const a = Float64Array.from(Array.from({length: 10}));
+    const b = Float64Array.from(Array.from({length: 100}));
+    expect(arrayBufferEquality(a, b)).toBe(false);
+  });
+
+  test('returns true when given matching URL', () => {
+    const a = new URL('https://jestjs.io/');
+    const b = new URL('https://jestjs.io/');
+    expect(equals(a, b)).toBe(true);
+  });
+
+  test('returns false when given non-matching URL', () => {
+    const a = new URL('https://jestjs.io/docs/getting-started');
+    const b = new URL('https://jestjs.io/docs/getting-started#using-babel');
+    expect(equals(a, b)).toBe(false);
+  });
+});
+
+describe('jasmineUtils primitives comparison', () => {
+  const falseCases: Array<[any, any]> = [
+    [null, undefined],
+    [null, 0],
+    [false, 0],
+    [false, ''],
+  ];
+
+  for (const [a, b] of falseCases) {
+    test(`${JSON.stringify(a)} and ${JSON.stringify(b)} returns false`, () => {
+      expect(equals(a, b)).toBe(false);
+    });
+  }
+
+  const trueCases: Array<any> = [null, 0, false, '', undefined];
+
+  for (const value of trueCases) {
+    test(`${JSON.stringify(value)} returns true`, () => {
+      expect(equals(value, value)).toBe(true);
+    });
+  }
 });

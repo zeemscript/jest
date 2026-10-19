@@ -5,20 +5,16 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import mergeStream = require('merge-stream');
+import mergeStream from 'merge-stream';
 import {
   CHILD_MESSAGE_CALL_SETUP,
   CHILD_MESSAGE_END,
-  PoolExitResult,
-  WorkerInterface,
-  WorkerOptions,
-  WorkerPoolOptions,
+  type PoolExitResult,
+  type WorkerInterface,
+  type WorkerOptions,
+  type WorkerPoolOptions,
   WorkerStates,
 } from '../types';
-
-// How long to wait for the child process to terminate
-// after CHILD_MESSAGE_END before sending force exiting.
-const FORCE_EXIT_DELAY = 500;
 
 /* istanbul ignore next */
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -34,7 +30,7 @@ export default class BaseWorkerPool {
   constructor(workerPath: string, options: WorkerPoolOptions) {
     this._options = options;
     this._workerPath = workerPath;
-    this._workers = new Array(options.numWorkers);
+    this._workers = Array.from({length: options.numWorkers});
 
     const stdout = mergeStream();
     const stderr = mergeStream();
@@ -106,7 +102,7 @@ export default class BaseWorkerPool {
   }
 
   createWorker(_workerOptions: WorkerOptions): WorkerInterface {
-    throw Error('Missing method createWorker in WorkerPool');
+    throw new Error('Missing method createWorker in WorkerPool');
   }
 
   async start(): Promise<void> {
@@ -149,7 +145,7 @@ export default class BaseWorkerPool {
       const forceExitTimeout = setTimeout(() => {
         worker.forceExit();
         forceExited = true;
-      }, FORCE_EXIT_DELAY);
+      }, this._options.workerGracefulExitTimeout ?? 500);
 
       await worker.waitForExit();
       // Worker ideally exited gracefully, don't send force exit then

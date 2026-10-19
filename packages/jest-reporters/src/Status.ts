@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
-import stringLength = require('string-length');
+import chalk from 'chalk';
+import stringLength from 'string-length';
 import type {
   AggregatedResult,
   Test,
@@ -41,10 +41,10 @@ class CurrentTestList {
   add(testPath: string, config: Config.ProjectConfig) {
     const index = this._array.indexOf(null);
     const record = {config, testPath};
-    if (index !== -1) {
-      this._array[index] = record;
-    } else {
+    if (index === -1) {
       this._array.push(record);
+    } else {
+      this._array[index] = record;
     }
   }
 
@@ -71,7 +71,7 @@ type Cache = {
  * from the terminal.
  */
 export default class Status {
-  private _cache: Cache | null;
+  private _cache: Cache | null = null;
   private _callback?: () => void;
   private readonly _currentTests: CurrentTestList;
   private _currentTestCases: Array<{
@@ -86,7 +86,6 @@ export default class Status {
   private _showStatus: boolean;
 
   constructor(private readonly _globalConfig: Config.GlobalConfig) {
-    this._cache = null;
     this._currentTests = new CurrentTestList();
     this._currentTestCases = [];
     this._done = false;
@@ -118,19 +117,19 @@ export default class Status {
 
   addTestCaseResult(test: Test, testCaseResult: TestCaseResult): void {
     this._currentTestCases.push({test, testCaseResult});
-    if (!this._showStatus) {
-      this._emit();
-    } else {
+    if (this._showStatus) {
       this._debouncedEmit();
+    } else {
+      this._emit();
     }
   }
 
   testStarted(testPath: string, config: Config.ProjectConfig): void {
     this._currentTests.add(testPath, config);
-    if (!this._showStatus) {
-      this._emit();
-    } else {
+    if (this._showStatus) {
       this._debouncedEmit();
+    } else {
+      this._emit();
     }
   }
 
@@ -162,7 +161,7 @@ export default class Status {
 
     const width = process.stdout.columns;
     let content = '\n';
-    this._currentTests.get().forEach(record => {
+    for (const record of this._currentTests.get()) {
       if (record) {
         const {config, testPath} = record;
 
@@ -177,7 +176,7 @@ export default class Status {
           width,
         )}\n`;
       }
-    });
+    }
 
     if (this._showStatus && this._aggregatedResults) {
       content += `\n${getSummary(this._aggregatedResults, {
@@ -192,13 +191,13 @@ export default class Status {
 
     let height = 0;
 
-    for (let i = 0; i < content.length; i++) {
-      if (content[i] === '\n') {
+    for (const char of content) {
+      if (char === '\n') {
         height++;
       }
     }
 
-    const clear = '\r\x1B[K\r\x1B[1A'.repeat(height);
+    const clear = '\r\u001B[K\r\u001B[1A'.repeat(height);
     return (this._cache = {clear, content});
   }
 

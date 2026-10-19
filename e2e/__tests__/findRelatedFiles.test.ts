@@ -18,7 +18,7 @@ afterEach(() => cleanup(DIR));
 describe('--findRelatedTests flag', () => {
   test('runs tests related to filename', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/test.test.js': `
       const a = require('../a');
       test('a', () => {});
@@ -33,7 +33,7 @@ describe('--findRelatedTests flag', () => {
     const {stderr} = runJest(DIR, ['--findRelatedTests', 'a.js']);
     expect(stderr).toMatch('PASS __tests__/test.test.js');
 
-    const summaryMsg = 'Ran all test suites related to files matching /a.js/i.';
+    const summaryMsg = 'Ran all test suites related to files matching a.js.';
     expect(stderr).toMatch(summaryMsg);
   });
 
@@ -44,7 +44,7 @@ describe('--findRelatedTests flag', () => {
     }
 
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/test.test.js': `
       const a = require('../a');
       test('a', () => {});
@@ -59,13 +59,13 @@ describe('--findRelatedTests flag', () => {
     const {stderr} = runJest(DIR, ['--findRelatedTests', 'A.JS']);
     expect(stderr).toMatch('PASS __tests__/test.test.js');
 
-    const summaryMsg = 'Ran all test suites related to files matching /A.JS/i.';
+    const summaryMsg = 'Ran all test suites related to files matching A.JS.';
     expect(stderr).toMatch(summaryMsg);
   });
 
   test('runs tests related to filename with a custom dependency extractor', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/test-skip-deps.test.js': `
       const dynamicImport = path => Promise.resolve(require(path));
       test('a', () => dynamicImport('../a').then(a => {
@@ -112,13 +112,13 @@ describe('--findRelatedTests flag', () => {
     expect(stderr).toMatch('PASS __tests__/test.test.js');
     expect(stderr).not.toMatch('PASS __tests__/test-skip-deps.test.js');
 
-    const summaryMsg = 'Ran all test suites related to files matching /a.js/i.';
+    const summaryMsg = 'Ran all test suites related to files matching a.js.';
     expect(stderr).toMatch(summaryMsg);
   });
 
   test('runs tests related to filename with a custom dependency extractor written in ESM', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/test-skip-deps.test.js': `
       const dynamicImport = path => Promise.resolve(require(path));
       test('a', () => dynamicImport('../a').then(a => {
@@ -162,13 +162,13 @@ describe('--findRelatedTests flag', () => {
     expect(stderr).toMatch('PASS __tests__/test.test.js');
     expect(stderr).not.toMatch('PASS __tests__/test-skip-deps.test.js');
 
-    const summaryMsg = 'Ran all test suites related to files matching /a.js/i.';
+    const summaryMsg = 'Ran all test suites related to files matching a.js.';
     expect(stderr).toMatch(summaryMsg);
   });
 
   test('generates coverage report for filename', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/a.test.js': `
         require('../a');
         require('../b');
@@ -219,7 +219,7 @@ describe('--findRelatedTests flag', () => {
 
   test('coverage configuration is applied correctly', () => {
     writeFiles(DIR, {
-      '.watchmanconfig': '',
+      '.watchmanconfig': '{}',
       '__tests__/a.test.js': `
         require('../a');
         test('a', () => expect(1).toBe(1));

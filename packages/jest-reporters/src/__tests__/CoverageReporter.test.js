@@ -23,35 +23,21 @@ let CoverageReporter;
 let istanbulReports;
 
 import * as path from 'path';
-import mock from 'mock-fs';
+
+const relativeFixtureDir = path
+  .relative(process.cwd(), path.join(__dirname, '__fixtures__'))
+  .split(path.sep)
+  .join('/');
+
+function fixturePath(relativePath) {
+  return `./${relativeFixtureDir}/${relativePath}`;
+}
 
 beforeEach(() => {
   CoverageReporter = require('../CoverageReporter').default;
   libCoverage = require('istanbul-lib-coverage');
   libSourceMaps = require('istanbul-lib-source-maps');
   istanbulReports = require('istanbul-reports');
-
-  const fileTree = {};
-  fileTree[`${process.cwd()}/path-test-files`] = {
-    '000pc_coverage_file.js': '',
-    '050pc_coverage_file.js': '',
-    '100pc_coverage_file.js': '',
-    'full_path_file.js': '',
-    'glob-path': {
-      'file1.js': '',
-      'file2.js': '',
-    },
-    'non_covered_file.js': '',
-    'relative_path_file.js': '',
-  };
-  fileTree[`${process.cwd()}/path-test`] = {
-    '100pc_coverage_file.js': '',
-  };
-  mock(fileTree);
-});
-
-afterEach(() => {
-  mock.restore();
 });
 
 describe('onRunComplete', () => {
@@ -82,24 +68,24 @@ describe('onRunComplete', () => {
       };
       const fileCoverage = [
         [
-          './path-test/100pc_coverage_file.js',
+          fixturePath('path-test/100pc_coverage_file.js'),
           {statements: {covered: 10, pct: 100, total: 10}},
         ],
-        ['./path-test-files/covered_file_without_threshold.js'],
-        ['./path-test-files/full_path_file.js'],
-        ['./path-test-files/relative_path_file.js'],
-        ['./path-test-files/glob-path/file1.js'],
-        ['./path-test-files/glob-path/file2.js'],
+        [fixturePath('path-test-files/covered_file_without_threshold.js')],
+        [fixturePath('path-test-files/full_path_file.js')],
+        [fixturePath('path-test-files/relative_path_file.js')],
+        [fixturePath('path-test-files/glob-path/file1.js')],
+        [fixturePath('path-test-files/glob-path/file2.js')],
         [
-          './path-test-files/000pc_coverage_file.js',
+          fixturePath('path-test-files/000pc_coverage_file.js'),
           {statements: {covered: 0, pct: 0, total: 10}},
         ],
         [
-          './path-test-files/050pc_coverage_file.js',
+          fixturePath('path-test-files/050pc_coverage_file.js'),
           {statements: {covered: 5, pct: 50, total: 10}},
         ],
         [
-          './path-test-files/100pc_coverage_file.js',
+          fixturePath('path-test-files/100pc_coverage_file.js'),
           {statements: {covered: 10, pct: 100, total: 10}},
         ],
       ].reduce((c, f) => {
@@ -135,7 +121,7 @@ describe('onRunComplete', () => {
     }));
   });
 
-  test('getLastError() returns an error when threshold is not met for global', () => {
+  test('getLastError() returns an error when threshold is not met for global', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
@@ -150,25 +136,23 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
   });
 
-  test('getLastError() returns an error when threshold is not met for file', () => {
+  test('getLastError() returns an error when threshold is not met for file', async () => {
     const covThreshold = {};
-    [
+    const paths = [
       'global',
-      path.resolve(`${process.cwd()}/path-test-files/full_path_file.js`),
-      './path-test-files/relative_path_file.js',
-      'path-test-files/glob-*/*.js',
-    ].forEach(path => {
-      covThreshold[path] = {
-        statements: 100,
-      };
-    });
+      path.resolve(__dirname, '__fixtures__/path-test-files/full_path_file.js'),
+      fixturePath('path-test-files/relative_path_file.js'),
+      `${relativeFixtureDir}/path-test-files/glob-*/*.js`,
+    ];
+    for (const path of paths) {
+      covThreshold[path] = {statements: 100};
+    }
 
     const testReporter = new CoverageReporter(
       {
@@ -180,25 +164,23 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(5);
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(5);
   });
 
-  test('getLastError() returns `undefined` when threshold is met', () => {
+  test('getLastError() returns `undefined` when threshold is met', async () => {
     const covThreshold = {};
-    [
+    const paths = [
       'global',
-      path.resolve(`${process.cwd()}/path-test-files/full_path_file.js`),
-      './path-test-files/relative_path_file.js',
-      'path-test-files/glob-*/*.js',
-    ].forEach(path => {
-      covThreshold[path] = {
-        statements: 50,
-      };
-    });
+      path.resolve(__dirname, '__fixtures__/path-test-files/full_path_file.js'),
+      fixturePath('path-test-files/relative_path_file.js'),
+      `${relativeFixtureDir}/path-test-files/glob-*/*.js`,
+    ];
+    for (const path of paths) {
+      covThreshold[path] = {statements: 50};
+    }
 
     const testReporter = new CoverageReporter(
       {
@@ -210,19 +192,18 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError()).toBeUndefined();
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeUndefined();
   });
 
-  test('getLastError() returns an error when threshold is not met for non-covered file', () => {
+  test('getLastError() returns an error when threshold is not met for non-covered file', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          'path-test-files/non_covered_file.js': {
+          [`${relativeFixtureDir}/path-test-files/non_covered_file.js`]: {
             statements: 100,
           },
         },
@@ -232,19 +213,18 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
   });
 
-  test('getLastError() returns an error when threshold is not met for directory', () => {
+  test('getLastError() returns an error when threshold is not met for directory', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          './path-test-files/glob-path/': {
+          [fixturePath('path-test-files/glob-path/')]: {
             statements: 100,
           },
         },
@@ -254,19 +234,18 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
   });
 
-  test('getLastError() returns `undefined` when threshold is met for directory', () => {
+  test('getLastError() returns `undefined` when threshold is met for directory', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          './path-test-files/glob-path/': {
+          [fixturePath('path-test-files/glob-path/')]: {
             statements: 40,
           },
         },
@@ -276,14 +255,13 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError()).toBeUndefined();
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeUndefined();
   });
 
-  test('getLastError() returns an error when there is no coverage data for a threshold', () => {
+  test('getLastError() returns an error when there is no coverage data for a threshold', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
@@ -298,27 +276,55 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
   });
 
-  test(`getLastError() returns 'undefined' when global threshold group
-   is empty because PATH and GLOB threshold groups have matched all the
-    files in the coverage data.`, () => {
+  test('getLastError() returns undefined when global threshold group is empty because all files are matched by path/glob thresholds', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          './path-test-files/': {
+          [fixturePath('path-test-files/')]: {
             statements: 50,
           },
-          './path-test/': {
+          [fixturePath('path-test/')]: {
             statements: 100,
           },
           global: {
+            // All files matched by path thresholds → globalFiles empty → fallback to coveredFiles
+            // Aggregate coverage ~50.5%, so threshold ≤50% passes
+            statements: 50,
+          },
+        },
+      },
+      {
+        maxWorkers: 2,
+      },
+    );
+    testReporter.log = jest.fn();
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeUndefined();
+  });
+
+  test('getLastError() returns error when global threshold group is empty because PATH and GLOB threshold groups have matched all the files but global threshold exceeds aggregate coverage.', async () => {
+    const testReporter = new CoverageReporter(
+      {
+        collectCoverage: true,
+        coverageThreshold: {
+          [fixturePath('path-test-files/')]: {
+            statements: 50,
+          },
+          [fixturePath('path-test/')]: {
+            statements: 100,
+          },
+          global: {
+            // All files matched by path thresholds → globalFiles empty → fallback to coveredFiles
+            // Aggregate coverage ~50.5% < 100% → error
             statements: 100,
           },
         },
@@ -328,29 +334,27 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError()).toBeUndefined();
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeDefined();
   });
 
-  test(`getLastError() returns 'undefined' when file and directory path
-  threshold groups overlap`, () => {
+  test('getLastError() returns undefined when file and directory path threshold groups overlap', async () => {
     const covThreshold = {};
-    [
-      './path-test-files/',
-      './path-test-files/covered_file_without_threshold.js',
-      './path-test-files/full_path_file.js',
-      './path-test-files/relative_path_file.js',
-      './path-test-files/glob-path/file1.js',
-      './path-test-files/glob-path/file2.js',
-      './path-test-files/*.js',
-    ].forEach(path => {
+    for (const path of [
+      fixturePath('path-test-files/'),
+      fixturePath('path-test-files/covered_file_without_threshold.js'),
+      fixturePath('path-test-files/full_path_file.js'),
+      fixturePath('path-test-files/relative_path_file.js'),
+      fixturePath('path-test-files/glob-path/file1.js'),
+      fixturePath('path-test-files/glob-path/file2.js'),
+      fixturePath('path-test-files/*.js'),
+    ]) {
       covThreshold[path] = {
         statements: 0,
       };
-    });
+    }
 
     const testReporter = new CoverageReporter(
       {
@@ -362,24 +366,21 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError()).toBeUndefined();
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeUndefined();
   });
 
-  test(`that if globs or paths are specified alongside global, coverage
-  data for matching paths will be subtracted from overall coverage
-  and thresholds will be applied independently`, () => {
+  test('global threshold excludes files matched by path/glob thresholds from overall coverage', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          './path-test-files/100pc_coverage_file.js': {
+          [fixturePath('path-test-files/100pc_coverage_file.js')]: {
             statements: 100,
           },
-          './path-test/100pc_coverage_file.js': {
+          [fixturePath('path-test/100pc_coverage_file.js')]: {
             statements: 100,
           },
           global: {
@@ -392,30 +393,28 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    // 100% coverage file is removed from overall coverage so
-    // coverage drops to < 50%
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
-      });
+    // The 100% files matched by path thresholds are subtracted from the global
+    // bucket, dropping the aggregate below 50%.
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError().message.split('\n')).toHaveLength(1);
   });
 
-  test('that files are matched by all matching threshold groups', () => {
+  test('files are matched by all matching threshold groups', async () => {
     const testReporter = new CoverageReporter(
       {
         collectCoverage: true,
         coverageThreshold: {
-          './path-test-files/': {
+          [fixturePath('path-test-files/')]: {
             statements: 50,
           },
-          './path-test-files/050pc_coverage_file.js': {
+          [fixturePath('path-test-files/050pc_coverage_file.js')]: {
             statements: 50,
           },
-          './path-test-files/100pc_coverage_*.js': {
+          [fixturePath('path-test-files/100pc_coverage_*.js')]: {
             statements: 100,
           },
-          './path-test-files/100pc_coverage_file.js': {
+          [fixturePath('path-test-files/100pc_coverage_file.js')]: {
             statements: 100,
           },
         },
@@ -425,29 +424,79 @@ describe('onRunComplete', () => {
       },
     );
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(testReporter.getLastError()).toBeUndefined();
-      });
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(testReporter.getLastError()).toBeUndefined();
   });
 
-  test('that it passes custom options when creating reporters', () => {
+  test('passes custom options when creating reporters', async () => {
     const testReporter = new CoverageReporter({
       coverageReporters: ['json', ['lcov', {maxCols: 10, projectRoot: './'}]],
     });
     testReporter.log = jest.fn();
-    return testReporter
-      .onRunComplete(new Set(), {}, mockAggResults)
-      .then(() => {
-        expect(istanbulReports.create).toHaveBeenCalledWith('json', {
-          maxCols: process.stdout.columns || Infinity,
-        });
-        expect(istanbulReports.create).toHaveBeenCalledWith('lcov', {
-          maxCols: 10,
-          projectRoot: './',
-        });
-        expect(testReporter.getLastError()).toBeUndefined();
+
+    await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+    expect(istanbulReports.create).toHaveBeenCalledWith('json', {
+      maxCols:
+        process.stdout.columns ||
+        Number.parseInt(process.env.COLUMNS || '', 10) ||
+        ((process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') &&
+        !process.env.JEST_WORKER_ID
+          ? 80
+          : Number.POSITIVE_INFINITY),
+    });
+    expect(istanbulReports.create).toHaveBeenCalledWith('lcov', {
+      maxCols: 10,
+      projectRoot: './',
+    });
+    expect(testReporter.getLastError()).toBeUndefined();
+  });
+
+  describe('maxCols fallback logic in CI', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      jest.resetModules();
+      process.env = {...originalEnv};
+      delete process.env.COLUMNS;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    test('falls back to 80 in CI without JEST_WORKER_ID', async () => {
+      process.env.CI = 'true';
+      delete process.env.JEST_WORKER_ID;
+
+      const testReporter = new CoverageReporter({
+        coverageReporters: ['json'],
       });
+      testReporter.log = jest.fn();
+
+      await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+      expect(istanbulReports.create).toHaveBeenCalledWith('json', {
+        maxCols: process.stdout.columns || 80,
+      });
+    });
+
+    test('falls back to Infinity in CI with JEST_WORKER_ID', async () => {
+      process.env.CI = 'true';
+      process.env.JEST_WORKER_ID = '1';
+
+      const testReporter = new CoverageReporter({
+        coverageReporters: ['json'],
+      });
+      testReporter.log = jest.fn();
+
+      await testReporter.onRunComplete(new Set(), {}, mockAggResults);
+
+      expect(istanbulReports.create).toHaveBeenCalledWith('json', {
+        maxCols: process.stdout.columns || Number.POSITIVE_INFINITY,
+      });
+    });
   });
 });

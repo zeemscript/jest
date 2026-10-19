@@ -11,8 +11,8 @@
 import {builtinModules, createRequire} from 'module';
 import * as path from 'path';
 import {pathToFileURL} from 'url';
+import {testWithSyncEsm} from '@jest/test-utils';
 import slash from 'slash';
-import {onNodeVersions} from '@jest/test-utils';
 
 let createRuntime;
 
@@ -41,6 +41,7 @@ describe('Runtime requireModule', () => {
       'exports',
       'filename',
       'id',
+      'isPreloading',
       'loaded',
       'path',
       'parent',
@@ -60,6 +61,7 @@ describe('Runtime requireModule', () => {
       'exports',
       'filename',
       'id',
+      'isPreloading',
       'loaded',
       'path',
       'parent',
@@ -134,24 +136,35 @@ describe('Runtime requireModule', () => {
     expect(exports.paths.length).toBeGreaterThan(0);
     const root = path.parse(process.cwd()).root;
     const globalPath = path.join(root, 'node_modules');
-    const rootIndex = exports.paths.findIndex(path => path === globalPath);
-    exports.paths.forEach((path, index) => {
+    const rootIndex = exports.paths.indexOf(globalPath);
+    for (const [index, path] of exports.paths.entries()) {
       if (index <= rootIndex) {
         expect(moduleDirectories.some(dir => path.endsWith(dir))).toBe(true);
       }
-    });
+    }
   });
 
   it('provides `require.main` to modules', async () => {
     const runtime = await createRuntime(__filename);
-    runtime._mainModule = module;
-    [
+    runtime.testMainModule.current = module;
+    for (const modulePath of [
       './test_root/modules_with_main/export_main.js',
       './test_root/modules_with_main/re_export_main.js',
-    ].forEach(modulePath => {
+    ]) {
       const mainModule = runtime.requireModule(__filename, modulePath);
       expect(mainModule).toBe(module);
-    });
+    }
+  });
+
+  it('reflects a main module assigned after `require` was built', async () => {
+    const runtime = await createRuntime(__filename);
+    const lazy = runtime.requireModule(
+      __filename,
+      './test_root/modules_with_main/lazy_main.js',
+    );
+    expect(lazy.getMain()).toBeNull();
+    runtime.testMainModule.current = module;
+    expect(lazy.getMain()).toBe(module);
   });
 
   it('throws on non-existent haste modules', async () => {
@@ -193,17 +206,15 @@ describe('Runtime requireModule', () => {
     }).not.toThrow();
   });
 
-  onNodeVersions('^16.0.0', () => {
-    it('finds node core built-in modules with node:prefix', async () => {
-      const runtime = await createRuntime(__filename);
+  it('finds node core built-in modules with node:prefix', async () => {
+    const runtime = await createRuntime(__filename);
 
-      expect(runtime.requireModule(runtime.__mockRootPath, 'fs')).toBe(
-        runtime.requireModule(runtime.__mockRootPath, 'node:fs'),
-      );
-      expect(runtime.requireModule(runtime.__mockRootPath, 'module')).toBe(
-        runtime.requireModule(runtime.__mockRootPath, 'node:module'),
-      );
-    });
+    expect(runtime.requireModule(runtime.__mockRootPath, 'fs')).toBe(
+      runtime.requireModule(runtime.__mockRootPath, 'node:fs'),
+    );
+    expect(runtime.requireModule(runtime.__mockRootPath, 'module')).toBe(
+      runtime.requireModule(runtime.__mockRootPath, 'node:module'),
+    );
   });
 
   it('finds and loads JSON files without file extension', async () => {
@@ -236,7 +247,7 @@ describe('Runtime requireModule', () => {
     expect(exports1).toBe(exports2);
   });
 
-  it('provides manual mock when real module doesnt exist', async () => {
+  it("provides manual mock when real module doesn't exist", async () => {
     const runtime = await createRuntime(__filename);
     const exports = runtime.requireModule(
       runtime.__mockRootPath,
@@ -269,69 +280,52 @@ describe('Runtime requireModule', () => {
   });
 
   it('resolves platform extensions based on the default platform', async () => {
-    await Promise.all([
-      createRuntime(__filename).then(runtime => {
-        const exports = runtime.requireModule(
-          runtime.__mockRootPath,
-          'Platform',
-        );
+    await createRuntime(__filename).then(runtime => {
+      const exports = runtime.requireModule(runtime.__mockRootPath, 'Platform');
 
-        expect(exports.platform).toBe('default');
-      }),
-      createRuntime(__filename, {
-        haste: {
-          defaultPlatform: 'ios',
-          platforms: ['ios', 'android'],
-        },
-      }).then(runtime => {
-        const exports = runtime.requireModule(
-          runtime.__mockRootPath,
-          'Platform',
-        );
+      expect(exports.platform).toBe('default');
+    });
+    await createRuntime(__filename, {
+      haste: {
+        defaultPlatform: 'ios',
+        platforms: ['ios', 'android'],
+      },
+    }).then(runtime => {
+      const exports = runtime.requireModule(runtime.__mockRootPath, 'Platform');
 
-        expect(exports.platform).toBe('ios');
-      }),
-      createRuntime(__filename, {
-        haste: {
-          platforms: ['ios', 'android'],
-        },
-      }).then(runtime => {
-        const exports = runtime.requireModule(
-          runtime.__mockRootPath,
-          'Platform',
-        );
+      expect(exports.platform).toBe('ios');
+    });
+    await createRuntime(__filename, {
+      haste: {
+        platforms: ['ios', 'android'],
+      },
+    }).then(runtime => {
+      const exports = runtime.requireModule(runtime.__mockRootPath, 'Platform');
 
-        expect(exports.platform).toBe('default');
-      }),
-      createRuntime(__filename, {
-        haste: {
-          defaultPlatform: 'android',
-          platforms: ['ios', 'android'],
-        },
-      }).then(runtime => {
-        const exports = runtime.requireModule(
-          runtime.__mockRootPath,
-          'Platform',
-        );
+      expect(exports.platform).toBe('default');
+    });
+    await createRuntime(__filename, {
+      haste: {
+        defaultPlatform: 'android',
+        platforms: ['ios', 'android'],
+      },
+    }).then(runtime => {
+      const exports = runtime.requireModule(runtime.__mockRootPath, 'Platform');
 
-        expect(exports.platform).toBe('android');
-      }),
-      createRuntime(__filename, {
-        haste: {
-          defaultPlatform: 'windows',
-          platforms: ['ios', 'android', 'native', 'windows'],
-        },
-      }).then(runtime => {
-        const exports = runtime.requireModule(
-          runtime.__mockRootPath,
-          'Platform',
-        );
+      expect(exports.platform).toBe('android');
+    });
+    await createRuntime(__filename, {
+      haste: {
+        defaultPlatform: 'windows',
+        platforms: ['ios', 'android', 'native', 'windows'],
+      },
+    }).then(runtime => {
+      const exports = runtime.requireModule(runtime.__mockRootPath, 'Platform');
 
-        // We prefer `native` over the default module if the default one
-        // cannot be found.
-        expect(exports.platform).toBe('native');
-      }),
-    ]);
+      // We prefer `native` over the default module if the default one
+      // cannot be found.
+      expect(exports.platform).toBe('native');
+    });
   });
 
   it('finds modules encoded in UTF-8 *with BOM*', async () => {
@@ -414,37 +408,82 @@ describe('Runtime requireModule', () => {
     expect(exports.syncBuiltinESMExports).not.toThrow();
     expect(exports.builtinModules).toEqual(builtinModules);
   });
-
-  onNodeVersions('<16.0.0', () => {
-    it('overrides module.createRequireFromPath', async () => {
-      const runtime = await createRuntime(__filename);
-      const exports = runtime.requireModule(runtime.__mockRootPath, 'module');
-
-      // createRequire with relative module path
-      expect(() => exports.createRequireFromPath('./relative/path')).toThrow(
-        new TypeError(
-          "The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received './relative/path'",
-        ),
-      );
-
-      // createRequireFromPath with absolute module path
-      {
-        const customRequire = exports.createRequireFromPath(
-          runtime.__mockRootPath,
-        );
-        expect(customRequire('./create_require_module').foo).toBe('foo');
-      }
-
-      // createRequireFromPath with file URL object
-      expect(() =>
-        exports.createRequireFromPath(pathToFileURL(runtime.__mockRootPath)),
-      ).toThrow(
-        new TypeError(
-          `The argument 'filename' must be string. Received '${pathToFileURL(
-            runtime.__mockRootPath,
-          )}'. Use createRequire for URL filename.`,
-        ),
-      );
-    });
+});
+describe('Runtime requireModule module.children', () => {
+  beforeEach(() => {
+    createRuntime = require('createRuntime');
   });
+
+  it('records loaded modules on the requiring parent, deduplicated', async () => {
+    const runtime = await createRuntime(__filename);
+    const parentModule = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenParentModule',
+    );
+    expect(parentModule.children).toHaveLength(1);
+    expect(parentModule.children[0].exports).toBe(
+      runtime.requireModule(runtime.__mockRootPath, 'RegularModule'),
+    );
+  });
+
+  it('does not record core modules', async () => {
+    const runtime = await createRuntime(__filename);
+    const parentModule = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenParentModule',
+    );
+    expect(
+      parentModule.children.map(childModule => childModule.id),
+    ).not.toContain('node:path');
+  });
+
+  it('records a registry hit on the second parent as well', async () => {
+    const runtime = await createRuntime(__filename);
+    const firstParent = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenParentModule',
+    );
+    const secondParent = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenSecondParentModule',
+    );
+    expect(secondParent.children).toHaveLength(1);
+    expect(secondParent.children[0]).toBe(firstParent.children[0]);
+  });
+
+  it('removes a child again when its load throws', async () => {
+    const runtime = await createRuntime(__filename);
+    const parentModule = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenFailedChildModule',
+    );
+    expect(parentModule.children).toHaveLength(0);
+  });
+
+  testWithSyncEsm('records a require()d ES module', async () => {
+    const runtime = await createRuntime(__filename);
+    const {esmExports, module: parentModule} = runtime.requireModule(
+      runtime.__mockRootPath,
+      'ChildrenEsmParentModule',
+    );
+    expect(esmExports.childEsmValue).toBe(42);
+    expect(parentModule.children).toHaveLength(1);
+    expect(parentModule.children[0].exports).toBe(esmExports);
+  });
+
+  testWithSyncEsm(
+    'records a require()d ES module inside isolateModules',
+    async () => {
+      const runtime = await createRuntime(__filename);
+      let parentModule;
+      runtime.isolateModules(() => {
+        parentModule = runtime.requireModule(
+          runtime.__mockRootPath,
+          'ChildrenEsmParentModule',
+        ).module;
+      });
+      expect(parentModule.children).toHaveLength(1);
+      expect(parentModule.children[0].exports.childEsmValue).toBe(42);
+    },
+  );
 });

@@ -6,7 +6,7 @@
  *
  */
 
-import {isPrimitive} from 'jest-get-type';
+import {isPrimitive} from '@jest/get-type';
 import {
   isImmutableList,
   isImmutableOrderedKeyed,
@@ -44,13 +44,17 @@ const hasPropertyInObject = (object: object, key: string | symbol): boolean => {
 };
 
 // Retrieves an object's keys for evaluation by getObjectSubset.  This evaluates
-// the prototype chain for string keys but not for symbols.  (Otherwise, it
-// could find values such as a Set or Map's Symbol.toStringTag, with unexpected
-// results.)
-const getObjectKeys = (object: object) => [
-  ...Object.keys(object),
-  ...Object.getOwnPropertySymbols(object),
-];
+// the prototype chain for string keys but not for non-enumerable symbols.
+// (Otherwise, it could find values such as a Set or Map's Symbol.toStringTag,
+// with unexpected results.)
+export const getObjectKeys = (object: object): Array<string | symbol> => {
+  return [
+    ...Object.keys(object),
+    ...Object.getOwnPropertySymbols(object).filter(
+      s => Object.getOwnPropertyDescriptor(object, s)?.enumerable,
+    ),
+  ];
+};
 
 export const getPath = (
   object: Record<string, any>,
@@ -60,7 +64,7 @@ export const getPath = (
     propertyPath = pathAsArray(propertyPath);
   }
 
-  if (propertyPath.length) {
+  if (propertyPath.length > 0) {
     const lastProp = propertyPath.length === 1;
     const prop = propertyPath[0];
     const newObject = object[prop];
@@ -140,18 +144,20 @@ export const getObjectSubset = (
     const trimmed: any = {};
     seenReferences.set(object, trimmed);
 
-    getObjectKeys(object)
-      .filter(key => hasPropertyInObject(subset, key))
-      .forEach(key => {
-        trimmed[key] = seenReferences.has(object[key])
-          ? seenReferences.get(object[key])
-          : getObjectSubset(
-              object[key],
-              subset[key],
-              customTesters,
-              seenReferences,
-            );
-      });
+    for (const key of getObjectKeys(object)) {
+      if (!hasPropertyInObject(subset, key)) {
+        continue;
+      }
+
+      trimmed[key] = seenReferences.has(object[key])
+        ? seenReferences.get(object[key])
+        : getObjectSubset(
+            object[key],
+            subset[key],
+            customTesters,
+            seenReferences,
+          );
+    }
 
     if (getObjectKeys(trimmed).length > 0) {
       return trimmed;
@@ -179,13 +185,25 @@ export const iterableEquality = (
     typeof b !== 'object' ||
     Array.isArray(a) ||
     Array.isArray(b) ||
+    ArrayBuffer.isView(a) ||
+    ArrayBuffer.isView(b) ||
     !hasIterator(a) ||
     !hasIterator(b)
   ) {
     return undefined;
   }
   if (a.constructor !== b.constructor) {
-    return false;
+    // Same cross-realm constructor check as typeEquality — see #14011.
+    // https://github.com/jestjs/jest/issues/14011
+    if (
+      a.constructor == null ||
+      b.constructor == null ||
+      a.constructor.name !== b.constructor.name ||
+      !isNativeFunction(a.constructor) ||
+      !isNativeFunction(b.constructor)
+    ) {
+      return false;
+    }
   }
   let length = aStack.length;
   while (length--) {
@@ -285,13 +303,30 @@ export const iterableEquality = (
     }
   }
 
-  const bIterator = b[IteratorSymbol]();
+  let aIterator: Iterator<unknown>;
+  let bIterator: Iterator<unknown>;
+  try {
+    aIterator = a[IteratorSymbol]();
+    bIterator = b[IteratorSymbol]();
+  } catch {
+    // If the iterator factory itself throws (e.g. a TypedArray method used as
+    // [Symbol.iterator] on a plain object), we cannot compare as iterables.
+    // Return undefined so equals() falls through to Object.is / property checks.
+    aStack.pop();
+    bStack.pop();
+    return undefined;
+  }
 
-  for (const aValue of a) {
-    const nextB = bIterator.next();
-    if (nextB.done || !equals(aValue, nextB.value, filteredCustomTesters)) {
+  let aStep = aIterator.next();
+  while (!aStep.done) {
+    const bStep = bIterator.next();
+    if (
+      bStep.done ||
+      !equals(aStep.value, bStep.value, filteredCustomTesters)
+    ) {
       return false;
     }
+    aStep = aIterator.next();
   }
   if (!bIterator.next().done) {
     return false;
@@ -303,8 +338,8 @@ export const iterableEquality = (
     !isImmutableOrderedSet(a) &&
     !isImmutableRecord(a)
   ) {
-    const aEntries = Object.entries(a);
-    const bEntries = Object.entries(b);
+    const aEntries = entries(a);
+    const bEntries = entries(b);
     if (!equals(aEntries, bEntries)) {
       return false;
     }
@@ -316,13 +351,25 @@ export const iterableEquality = (
   return true;
 };
 
+const entries = (obj: any) => {
+  if (!isObject(obj)) return [];
+
+  const symbolProperties = Object.getOwnPropertySymbols(obj)
+    .filter(key => key !== Symbol.iterator)
+    .map(key => [key, obj[key]]);
+
+  return [...symbolProperties, ...Object.entries(obj)];
+};
+
 const isObject = (a: any) => a !== null && typeof a === 'object';
 
 const isObjectWithKeys = (a: any) =>
   isObject(a) &&
   !(a instanceof Error) &&
-  !(a instanceof Array) &&
-  !(a instanceof Date);
+  !Array.isArray(a) &&
+  !(a instanceof Date) &&
+  !(a instanceof Set) &&
+  !(a instanceof Map);
 
 export const subsetEquality = (
   object: unknown,
@@ -341,12 +388,14 @@ export const subsetEquality = (
         return undefined;
       }
 
-      return getObjectKeys(subset).every(key => {
+      if (seenReferences.has(subset)) return undefined;
+      seenReferences.set(subset, true);
+
+      const matchResult = getObjectKeys(subset).every(key => {
         if (isObjectWithKeys(subset[key])) {
           if (seenReferences.has(subset[key])) {
             return equals(object[key], subset[key], filteredCustomTesters);
           }
-          seenReferences.set(subset[key], true);
         }
         const result =
           object != null &&
@@ -363,10 +412,20 @@ export const subsetEquality = (
         seenReferences.delete(subset[key]);
         return result;
       });
+      seenReferences.delete(subset);
+      return matchResult;
     };
 
   return subsetEqualityWithContext()(object, subset);
 };
+
+// Returns true if `fn` is a native function (its toString contains "[native code]").
+function isNativeFunction(fn: unknown): boolean {
+  return (
+    typeof fn === 'function' &&
+    Function.prototype.toString.call(fn).includes('[native code]')
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export const typeEquality = (a: any, b: any): boolean | undefined => {
@@ -377,8 +436,23 @@ export const typeEquality = (a: any, b: any): boolean | undefined => {
     // Since Jest globals are different from Node globals,
     // constructors are different even between arrays when comparing properties of mock objects.
     // Both of them should be able to compare correctly when they are array-to-array.
-    // https://github.com/facebook/jest/issues/2549
+    // https://github.com/jestjs/jest/issues/2549
     (Array.isArray(a) && Array.isArray(b))
+  ) {
+    return undefined;
+  }
+
+  // structuredClone (and other cross-realm calls) return objects whose
+  // constructors come from a different VM context, so identity checks fail.
+  // Fall back to comparing constructor names for native built-ins only —
+  // user-defined classes still need identity equality.
+  // https://github.com/jestjs/jest/issues/14011
+  if (
+    a.constructor != null &&
+    b.constructor != null &&
+    a.constructor.name === b.constructor.name &&
+    isNativeFunction(a.constructor) &&
+    isNativeFunction(b.constructor)
   ) {
     return undefined;
   }
@@ -390,12 +464,20 @@ export const arrayBufferEquality = (
   a: unknown,
   b: unknown,
 ): boolean | undefined => {
-  if (!(a instanceof ArrayBuffer) || !(b instanceof ArrayBuffer)) {
-    return undefined;
+  let dataViewA = a;
+  let dataViewB = b;
+
+  if (isArrayBuffer(a) && isArrayBuffer(b)) {
+    dataViewA = new DataView(a);
+    dataViewB = new DataView(b);
+  } else if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
+    dataViewA = new DataView(a.buffer, a.byteOffset, a.byteLength);
+    dataViewB = new DataView(b.buffer, b.byteOffset, b.byteLength);
   }
 
-  const dataViewA = new DataView(a);
-  const dataViewB = new DataView(b);
+  if (!(dataViewA instanceof DataView && dataViewB instanceof DataView)) {
+    return undefined;
+  }
 
   // Buffers are not equal when they do not have the same byte length
   if (dataViewA.byteLength !== dataViewB.byteLength) {
@@ -411,6 +493,10 @@ export const arrayBufferEquality = (
 
   return true;
 };
+
+function isArrayBuffer(obj: unknown): obj is ArrayBuffer {
+  return Object.prototype.toString.call(obj) === '[object ArrayBuffer]';
+}
 
 export const sparseArrayEquality = (
   a: unknown,
@@ -440,7 +526,7 @@ export const partition = <T>(
 ): [Array<T>, Array<T>] => {
   const result: [Array<T>, Array<T>] = [[], []];
 
-  items.forEach(item => result[predicate(item) ? 0 : 1].push(item));
+  for (const item of items) result[predicate(item) ? 0 : 1].push(item);
 
   return result;
 };
@@ -454,14 +540,14 @@ export const pathAsArray = (propertyPath: string): Array<any> => {
   }
 
   // will match everything that's not a dot or a bracket, and "" for consecutive dots.
-  const pattern = RegExp('[^.[\\]]+|(?=(?:\\.)(?:\\.|$))', 'g');
+  const pattern = new RegExp('[^.[\\]]+|(?=(?:\\.)(?:\\.|$))', 'g');
 
   // Because the regex won't match a dot in the beginning of the path, if present.
   if (propertyPath[0] === '.') {
     properties.push('');
   }
 
-  propertyPath.replace(pattern, match => {
+  propertyPath.replaceAll(pattern, match => {
     properties.push(match);
     return match;
   });
@@ -482,10 +568,10 @@ export const isError = (value: unknown): value is Error => {
 };
 
 export function emptyObject(obj: unknown): boolean {
-  return obj && typeof obj === 'object' ? !Object.keys(obj).length : false;
+  return obj && typeof obj === 'object' ? Object.keys(obj).length === 0 : false;
 }
 
-const MULTILINE_REGEXP = /[\r\n]/;
+const MULTILINE_REGEXP = /[\n\r]/;
 
 export const isOneline = (expected: unknown, received: unknown): boolean =>
   typeof expected === 'string' &&

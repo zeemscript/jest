@@ -6,7 +6,8 @@
  *
  */
 
-import {isPrimitive} from 'jest-get-type';
+import {isPrimitive} from '@jest/get-type';
+import {escapeStrForRegex} from 'jest-regex-util';
 import {format as pretty} from 'pretty-format';
 
 export type Template = Record<string, unknown>;
@@ -17,22 +18,32 @@ export const interpolateVariables = (
   title: string,
   template: Template,
   index: number,
-): string =>
-  title
-    .replace(
-      new RegExp(`\\$(${Object.keys(template).join('|')})[.\\w]*`, 'g'),
-      match => {
-        const keyPath = match.slice(1).split('.');
-        const value = getPath(template, keyPath);
+): string => {
+  // Sort keys longest-first so an overlapping key like `a|b` wins over `a`,
+  // regardless of object property insertion order.
+  const keys = Object.keys(template)
+    .filter(key => key.length > 0)
+    .sort((a, b) => b.length - a.length);
 
-        return isPrimitive(value)
-          ? String(value)
-          : pretty(value, {maxDepth: 1, min: true});
-      },
-    )
+  if (keys.length === 0) {
+    return title.replace('$#', `${index}`);
+  }
+
+  const alternation = keys.map(escapeStrForRegex).join('|');
+
+  return title
+    .replaceAll(new RegExp(`\\$(${alternation})[.\\w]*`, 'g'), match => {
+      const keyPath = match.slice(1).split('.');
+      const value = getPath(template, keyPath);
+
+      return isPrimitive(value)
+        ? String(value)
+        : pretty(value, {maxDepth: 1, min: true});
+    })
     .replace('$#', `${index}`);
+};
 
-/* eslint import/export: 0*/
+/* eslint import-x/export: 0*/
 export function getPath<
   Obj extends Template,
   A extends keyof Obj,
@@ -71,6 +82,8 @@ export function getPath(
   template: Template,
   [head, ...tail]: Array<string>,
 ): unknown {
+  if (template === null) return 'null';
+  if (template === undefined) return 'undefined';
   if (!head || !Object.prototype.hasOwnProperty.call(template, head))
     return template;
   return getPath(template[head] as Template, tail);

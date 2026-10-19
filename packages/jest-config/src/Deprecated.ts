@@ -5,8 +5,17 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {DeprecatedOptions} from 'jest-validate';
+
+function formatDeprecation(message: string): string {
+  const lines = [
+    message.replaceAll(/\*(.+?)\*/g, (_, s) => chalk.bold(`"${s}"`)),
+    '',
+    'Please update your configuration.',
+  ];
+  return lines.map(s => `  ${s}`).join('\n');
+}
 
 const deprecatedOptions: DeprecatedOptions = {
   browser: () =>
@@ -27,6 +36,11 @@ const deprecatedOptions: DeprecatedOptions = {
   )} was replaced by ${chalk.bold('"sandboxInjectedGlobals"')}.
 
   Please update your configuration.`,
+
+  init: () =>
+    `  Option ${chalk.bold(
+      '"init"',
+    )} has been deprecated. Please use "create-jest" package as shown in the documentation: https://jestjs.io/docs/getting-started#generate-a-basic-configuration-file`,
 
   moduleLoader: (_options: {moduleLoader?: string}) => `  Option ${chalk.bold(
     '"moduleLoader"',
@@ -72,6 +86,11 @@ const deprecatedOptions: DeprecatedOptions = {
 
   Please update your configuration.
   `,
+
+  testPathPattern: () =>
+    formatDeprecation(
+      'Option *testPathPattern* was replaced by *--testPathPatterns*. *--testPathPatterns* is only available as a command-line option.',
+    ),
 
   testURL: (_options: {testURL?: string}) => `  Option ${chalk.bold(
     '"testURL"',

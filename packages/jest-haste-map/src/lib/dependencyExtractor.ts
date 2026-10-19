@@ -60,7 +60,7 @@ const IMPORT_OR_EXPORT_RE = createRegExp(
 const JEST_EXTENSIONS_RE = createRegExp(
   [
     ...functionCallStart(
-      'jest\\s*\\.\\s*(?:requireActual|requireMock|genMockFromModule|createMockFromModule)',
+      'jest\\s*\\.\\s*(?:requireActual|requireMock|createMockFromModule)',
     ),
     CAPTURE_STRING_LITERAL(1),
     WHITESPACE,
@@ -80,8 +80,8 @@ export const extractor: DependencyExtractor = {
     };
 
     code
-      .replace(BLOCK_COMMENT_RE, '')
-      .replace(LINE_COMMENT_RE, '')
+      .replaceAll(BLOCK_COMMENT_RE, '')
+      .replaceAll(LINE_COMMENT_RE, '')
       .replace(IMPORT_OR_EXPORT_RE, addDependency)
       .replace(REQUIRE_OR_DYNAMIC_IMPORT_RE, addDependency)
       .replace(JEST_EXTENSIONS_RE, addDependency);

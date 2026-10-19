@@ -6,19 +6,21 @@
  */
 
 import * as fs from 'graceful-fs';
+import {escapeBacktickString} from '@jest/snapshot-utils';
 import type {Config} from '@jest/types';
 import type {MatcherFunctionWithContext} from 'expect';
 import {
   BOLD_WEIGHT,
   EXPECTED_COLOR,
-  MatcherHintOptions,
+  type MatcherHintOptions,
   RECEIVED_COLOR,
   matcherErrorMessage,
   matcherHint,
   printWithType,
   stringify,
 } from 'jest-matcher-utils';
-import {EXTENSION, SnapshotResolver} from './SnapshotResolver';
+import {isError} from 'jest-util';
+import {EXTENSION, type SnapshotResolver} from './SnapshotResolver';
 import {
   PROPERTIES_ARG,
   SNAPSHOT_ARG,
@@ -31,7 +33,7 @@ import {
   printSnapshotAndReceived,
 } from './printSnapshot';
 import type {Context, FileSystem, MatchSnapshotConfig} from './types';
-import {deepMerge, escapeBacktickString, serialize} from './utils';
+import {deepMerge, serialize} from './utils';
 
 export {addSerializer, getSerializers} from './plugins';
 export {
@@ -57,8 +59,8 @@ const printSnapshotName = (
   hint = '',
   count: number,
 ): string => {
-  const hasNames = concatenatedBlockNames.length !== 0;
-  const hasHint = hint.length !== 0;
+  const hasNames = concatenatedBlockNames.length > 0;
+  const hasHint = hint.length > 0;
 
   return `Snapshot name: \`${
     hasNames ? escapeBacktickString(concatenatedBlockNames) : ''
@@ -82,7 +84,7 @@ function stripAddedIndentation(inlineSnapshot: string) {
     return inlineSnapshot;
   }
 
-  if (lines[0].trim() !== '' || lines[lines.length - 1].trim() !== '') {
+  if (lines[0].trim() !== '' || lines.at(-1)!.trim() !== '') {
     // If not blank first and last lines, abort.
     return inlineSnapshot;
   }
@@ -96,7 +98,7 @@ function stripAddedIndentation(inlineSnapshot: string) {
         return inlineSnapshot;
       }
 
-      lines[i] = lines[i].substring(indentation.length);
+      lines[i] = lines[i].slice(indentation.length);
     }
   }
 
@@ -262,9 +264,9 @@ export const toMatchInlineSnapshot: MatcherFunctionWithContext<
   return _toMatchSnapshot({
     context: this,
     inlineSnapshot:
-      inlineSnapshot !== undefined
-        ? stripAddedIndentation(inlineSnapshot)
-        : undefined,
+      inlineSnapshot === undefined
+        ? undefined
+        : stripAddedIndentation(inlineSnapshot),
     isInline: true,
     matcherName,
     properties,
@@ -277,11 +279,19 @@ const _toMatchSnapshot = (config: MatchSnapshotConfig) => {
     config;
   let {received} = config;
 
-  context.dontThrow && context.dontThrow();
+  /** If a test was ran with `test.failing`. Passed by Jest Circus. */
+  const {testFailing = false} = context;
 
-  const {currentConcurrentTestName, isNot, snapshotState} = context;
+  if (!testFailing && context.dontThrow) {
+    // Suppress errors while running tests
+    context.dontThrow();
+  }
+
+  const {currentConcurrentTestName, currentTestIdentity, isNot, snapshotState} =
+    context;
   const currentTestName =
-    currentConcurrentTestName?.getStore() ?? context.currentTestName;
+    currentConcurrentTestName?.() ?? context.currentTestName;
+  const testIdentity = currentTestIdentity?.();
 
   if (isNot) {
     throw new Error(
@@ -328,8 +338,15 @@ const _toMatchSnapshot = (config: MatchSnapshotConfig) => {
       context.utils.subsetEquality,
     ]);
 
-    if (!propertyPass) {
-      const key = snapshotState.fail(fullTestName, received);
+    if (propertyPass) {
+      received = deepMerge(received, properties);
+    } else {
+      const key = snapshotState.fail(
+        fullTestName,
+        received,
+        undefined,
+        testIdentity,
+      );
       const matched = /(\d+)$/.exec(key);
       const count = matched === null ? 1 : Number(matched[1]);
 
@@ -344,13 +361,15 @@ const _toMatchSnapshot = (config: MatchSnapshotConfig) => {
           snapshotState.expand,
         )}`;
 
-      return {
+      const matcherResult = {
         message,
         name: matcherName,
         pass: false,
       };
-    } else {
-      received = deepMerge(received, properties);
+
+      return isInline
+        ? matcherResult
+        : {...matcherResult, snapshotPath: snapshotState.snapshotPath};
     }
   }
 
@@ -359,6 +378,8 @@ const _toMatchSnapshot = (config: MatchSnapshotConfig) => {
     inlineSnapshot,
     isInline,
     received,
+    testFailing,
+    testIdentity,
     testName: fullTestName,
   });
   const {actual, count, expected, pass} = result;
@@ -398,13 +419,17 @@ const _toMatchSnapshot = (config: MatchSnapshotConfig) => {
   // Passing the actual and expected objects so that a custom reporter
   // could access them, for example in order to display a custom visual diff,
   // or create a different error message
-  return {
+  const matcherResult = {
     actual,
     expected,
     message,
     name: matcherName,
     pass: false,
   };
+
+  return isInline
+    ? matcherResult
+    : {...matcherResult, snapshotPath: snapshotState.snapshotPath};
 };
 
 export const toThrowErrorMatchingSnapshot: MatcherFunctionWithContext<
@@ -454,9 +479,9 @@ export const toThrowErrorMatchingInlineSnapshot: MatcherFunctionWithContext<
     {
       context: this,
       inlineSnapshot:
-        inlineSnapshot !== undefined
-          ? stripAddedIndentation(inlineSnapshot)
-          : undefined,
+        inlineSnapshot === undefined
+          ? undefined
+          : stripAddedIndentation(inlineSnapshot),
       isInline: true,
       matcherName,
       received,
@@ -472,7 +497,7 @@ const _toThrowErrorMatchingSnapshot = (
   const {context, hint, inlineSnapshot, isInline, matcherName, received} =
     config;
 
-  context.dontThrow && context.dontThrow();
+  context.dontThrow?.();
 
   const {isNot, promise} = context;
 
@@ -506,8 +531,8 @@ const _toThrowErrorMatchingSnapshot = (
   } else {
     try {
       received();
-    } catch (e) {
-      error = e;
+    } catch (receivedError) {
+      error = receivedError;
     }
   }
 
@@ -518,12 +543,25 @@ const _toThrowErrorMatchingSnapshot = (
     );
   }
 
+  let message = error.message;
+  while ('cause' in error) {
+    error = error.cause;
+    if (isError(error) || error instanceof Error) {
+      message += `\nCause: ${error.message}`;
+    } else {
+      if (typeof error === 'string') {
+        message += `\nCause: ${error}`;
+      }
+      break;
+    }
+  }
+
   return _toMatchSnapshot({
     context,
     hint,
     inlineSnapshot,
     isInline,
     matcherName,
-    received: error.message,
+    received: message,
   });
 };

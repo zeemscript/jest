@@ -7,7 +7,7 @@
  */
 
 import chalk from 'chalk';
-// eslint-disable-next-line import/order
+import {TestPathPatterns} from '@jest/pattern';
 import {KEYS} from 'jest-watcher';
 
 const runJestMock = jest.fn();
@@ -24,14 +24,11 @@ jest.mock(
 
 jest.doMock('chalk', () => new chalk.Instance({level: 0}));
 
-jest.doMock('strip-ansi');
-require('strip-ansi').mockImplementation(str => str);
-
 jest.doMock(
   '../runJest',
   () =>
     function () {
-      const args = Array.from(arguments);
+      const args = [...arguments];
       const [{onComplete}] = args;
       runJestMock.apply(null, args);
 
@@ -83,6 +80,8 @@ jest.doMock(
 const watch = require('../watch').default;
 
 const globalConfig = {
+  rootDir: '',
+  testPathPatterns: new TestPathPatterns([]),
   watch: true,
 };
 
@@ -116,11 +115,13 @@ describe('Watch mode flows', () => {
     };
 
     // Write a pattern
-    ['c', 'o', 'n', ' ', '1', '2'].forEach(assertPattern);
+    for (const pattern of ['c', 'o', 'n', ' ', '1', '2'])
+      assertPattern(pattern);
 
-    [KEYS.BACKSPACE, KEYS.BACKSPACE].forEach(assertPattern);
+    for (const pattern of [KEYS.BACKSPACE, KEYS.BACKSPACE])
+      assertPattern(pattern);
 
-    ['*'].forEach(assertPattern);
+    for (const pattern of ['*']) assertPattern(pattern);
 
     // Runs Jest again
     runJestMock.mockReset();
@@ -153,6 +154,6 @@ class MockStdin {
   }
 
   emit(key) {
-    this._callbacks.forEach(cb => cb(key));
+    for (const cb of this._callbacks) cb(key);
   }
 }

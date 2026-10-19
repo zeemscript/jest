@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`can press "p" to filter by file name 1`] = `
 "<hideCursor>
@@ -66,7 +66,7 @@ exports[`can press "p" to filter by file name: test summary 2`] = `
 Tests:       2 passed, 2 total
 Snapshots:   0 total
 Time:        <<REPLACED>>
-Ran all test suites matching /bar/i."
+Ran all test suites matching bar."
 `;
 
 exports[`can press "t" to filter by test name 1`] = `

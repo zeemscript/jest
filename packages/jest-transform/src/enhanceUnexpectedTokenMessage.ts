@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 
 const DOT = ' \u2022 ';
 
@@ -41,16 +41,13 @@ Out of the box Jest supports Babel, which will be used to transform your files i
 By default "node_modules" folder is ignored by transformers.
 
 Here's what you can do:
-${DOT}If you are trying to use ECMAScript Modules, see ${chalk.underline(
-    'https://jestjs.io/docs/ecmascript-modules',
-  )} for how to enable it.
 ${DOT}If you are trying to use TypeScript, see ${chalk.underline(
     'https://jestjs.io/docs/getting-started#using-typescript',
   )}
 ${DOT}To have some of your "node_modules" files transformed, you can specify a custom ${chalk.bold(
     '"transformIgnorePatterns"',
   )} in your config.
-${DOT}If you need a custom transformation specify a ${chalk.bold(
+${DOT}If you need a custom transformation, specify a ${chalk.bold(
     '"transform"',
   )} option in your config.
 ${DOT}If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the ${chalk.bold(
@@ -64,7 +61,7 @@ ${chalk.cyan('https://jestjs.io/docs/code-transformation')}
 
 ${chalk.bold.red('Details:')}
 
-${e.stack ?? ''}`.trimRight();
+${e.stack ?? ''}`.trimEnd();
 
   return e;
 }

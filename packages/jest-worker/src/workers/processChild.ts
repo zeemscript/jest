@@ -5,22 +5,23 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {isPromise} from 'jest-util';
+import {isError, isPromise} from 'jest-util';
 import {
   CHILD_MESSAGE_CALL,
   CHILD_MESSAGE_CALL_SETUP,
   CHILD_MESSAGE_END,
   CHILD_MESSAGE_INITIALIZE,
   CHILD_MESSAGE_MEM_USAGE,
-  ChildMessageCall,
-  ChildMessageInitialize,
+  type ChildMessageCall,
+  type ChildMessageInitialize,
   PARENT_MESSAGE_CLIENT_ERROR,
-  PARENT_MESSAGE_ERROR,
+  type PARENT_MESSAGE_ERROR,
   PARENT_MESSAGE_MEM_USAGE,
   PARENT_MESSAGE_OK,
   PARENT_MESSAGE_SETUP_ERROR,
-  ParentMessageMemUsage,
+  type ParentMessageMemUsage,
 } from '../types';
+import {packMessage} from './safeMessageTransferring';
 
 type UnknownFunction = (...args: Array<unknown>) => unknown | Promise<unknown>;
 
@@ -97,7 +98,21 @@ function reportSuccess(result: unknown) {
     throw new Error('Child can only be used on a forked process');
   }
 
-  process.send([PARENT_MESSAGE_OK, result]);
+  try {
+    process.send([PARENT_MESSAGE_OK, result]);
+  } catch (error) {
+    if (
+      isError(error) &&
+      // if .send is a function, it's a serialization issue
+      !error.message.includes('.send is not a function')
+    ) {
+      // Apply specific serialization only in error cases
+      // to avoid affecting performance in regular cases.
+      process.send([PARENT_MESSAGE_OK, packMessage(result)]);
+    } else {
+      throw error;
+    }
+  }
 }
 
 function reportClientError(error: Error) {
@@ -193,8 +208,8 @@ function execFunction(
 
   try {
     result = fn.apply(ctx, args);
-  } catch (err: any) {
-    onError(err);
+  } catch (error: any) {
+    onError(error);
 
     return;
   }

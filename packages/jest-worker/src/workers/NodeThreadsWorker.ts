@@ -5,27 +5,28 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {totalmem} from 'os';
-import {Worker} from 'worker_threads';
-import mergeStream = require('merge-stream');
+import {totalmem} from 'node:os';
+import {Worker} from 'node:worker_threads';
+import mergeStream from 'merge-stream';
 import {
   CHILD_MESSAGE_INITIALIZE,
   CHILD_MESSAGE_MEM_USAGE,
-  ChildMessage,
-  OnCustomMessage,
-  OnEnd,
-  OnStart,
+  type ChildMessage,
+  type OnCustomMessage,
+  type OnEnd,
+  type OnStart,
   PARENT_MESSAGE_CLIENT_ERROR,
   PARENT_MESSAGE_CUSTOM,
   PARENT_MESSAGE_MEM_USAGE,
   PARENT_MESSAGE_OK,
   PARENT_MESSAGE_SETUP_ERROR,
-  ParentMessage,
-  WorkerInterface,
-  WorkerOptions,
+  type ParentMessage,
+  type WorkerInterface,
+  type WorkerOptions,
   WorkerStates,
 } from '../types';
 import WorkerAbstract from './WorkerAbstract';
+import {unpackMessage} from './safeMessageTransferring';
 
 export default class ExperimentalWorker
   extends WorkerAbstract
@@ -177,7 +178,7 @@ export default class ExperimentalWorker
 
     switch (response[0]) {
       case PARENT_MESSAGE_OK:
-        this._onProcessEnd(null, response[1]);
+        this._onProcessEnd(null, unpackMessage(response[1]));
         break;
 
       case PARENT_MESSAGE_CLIENT_ERROR:
@@ -213,7 +214,7 @@ export default class ExperimentalWorker
         break;
 
       case PARENT_MESSAGE_CUSTOM:
-        this._onCustomMessage(response[1]);
+        this._onCustomMessage(unpackMessage(response[1]));
         break;
 
       case PARENT_MESSAGE_MEM_USAGE:
@@ -383,11 +384,11 @@ export default class ExperimentalWorker
 
       try {
         this._worker.postMessage([CHILD_MESSAGE_MEM_USAGE]);
-      } catch (err: any) {
+      } catch (error: any) {
         this._memoryUsagePromise = undefined;
         this._resolveMemoryUsage = undefined;
 
-        rejectCallback(err);
+        rejectCallback(error);
       }
 
       return promise;

@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {strict as assert} from 'assert';
-import * as os from 'os';
-import * as path from 'path';
+import {strict as assert} from 'node:assert';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import chalk from 'chalk';
 import execa from 'execa';
-import glob from 'glob';
+import {glob} from 'glob';
 import fs from 'graceful-fs';
 import pLimit from 'p-limit';
 import stripJsonComments from 'strip-json-comments';
@@ -32,7 +32,7 @@ const workspacesWithTs = new Map(
     .map(({location, name}) => [name, location]),
 );
 
-packagesWithTs.forEach(({packageDir, pkg}) => {
+for (const {packageDir, pkg} of packagesWithTs) {
   assert.ok(pkg.types, `Package ${pkg.name} is missing \`types\` field`);
 
   assert.strictEqual(
@@ -41,10 +41,15 @@ packagesWithTs.forEach(({packageDir, pkg}) => {
     `\`main\` and \`types\` field of ${pkg.name} does not match`,
   );
 
-  const jestDependenciesOfPackage = Object.keys(pkg.dependencies || {})
-    .concat(Object.keys(pkg.devDependencies || {}))
-    .filter(dep => workspacesWithTs.has(dep))
+  const jestDependenciesOfPackage = [
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {}),
+  ]
     .filter(dep => {
+      if (!workspacesWithTs.has(dep)) {
+        return false;
+      }
+
       // nothing should depend on these
       if (dep === 'jest-circus' || dep === 'jest-jasmine2') {
         return false;
@@ -116,9 +121,10 @@ packagesWithTs.forEach(({packageDir, pkg}) => {
     const tsConfig = JSON.parse(
       stripJsonComments(fs.readFileSync(tsConfigPath, 'utf8')),
     );
-    const references = tsConfig.references.map(({path}) => path);
 
-    return references.some(reference => /test-utils$/.test(reference));
+    return tsConfig.references.some(
+      ({path}) => path && path.endsWith('test-utils'),
+    );
   });
 
   if (hasJestTestUtils && testUtilsReferences.length === 0) {
@@ -144,7 +150,7 @@ packagesWithTs.forEach(({packageDir, pkg}) => {
       ),
     );
   }
-});
+}
 
 const args = [
   'tsc',
@@ -160,22 +166,17 @@ try {
   console.log(
     chalk.inverse.green(' Successfully built TypeScript definition files '),
   );
-} catch (e) {
+} catch (error) {
   console.error(
     chalk.inverse.red(' Unable to build TypeScript definition files '),
   );
-  throw e;
+  throw error;
 }
 
 console.log(chalk.inverse(' Validating TypeScript definition files '));
 
 // we want to limit the number of processes we spawn
-const cpus = Math.max(
-  1,
-  (typeof os.availableParallelism === 'function'
-    ? os.availableParallelism()
-    : os.cpus().length) - 1,
-);
+const cpus = Math.max(1, os.availableParallelism() - 1);
 
 const typesReferenceDirective = '/// <reference types';
 const typesNodeReferenceDirective = `${typesReferenceDirective}="node" />`;
@@ -243,12 +244,12 @@ try {
       }),
     ),
   );
-} catch (e) {
+} catch (error) {
   console.error(
     chalk.inverse.red(' Unable to validate TypeScript definition files '),
   );
 
-  throw e;
+  throw error;
 }
 
 console.log(

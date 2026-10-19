@@ -41,6 +41,12 @@ beforeEach(() => {
       mockCount++;
 
       return {
+        fooCircularResult() {
+          const circular = {self: undefined as unknown};
+          circular.self = circular;
+          return {error: circular};
+        },
+
         fooPromiseThrows() {
           return new Promise((_resolve, reject) => {
             setTimeout(() => reject(mockError), 5);
@@ -92,7 +98,7 @@ beforeEach(() => {
 
   jest.mock(
     '../my-fancy-standalone-worker',
-    () => jest.fn().mockImplementation(() => 12345),
+    () => jest.fn().mockImplementation(() => 12_345),
     {virtual: true},
   );
 
@@ -102,7 +108,7 @@ beforeEach(() => {
     '../my-fancy-babel-worker',
     () => ({
       __esModule: true,
-      default: jest.fn().mockImplementation(() => 67890),
+      default: jest.fn().mockImplementation(() => 67_890),
     }),
     {virtual: true},
   );
@@ -338,6 +344,32 @@ it('returns results when it gets resolved if function is asynchronous', async ()
   expect(spyProcessSend).toHaveBeenCalledTimes(2);
 });
 
+it('returns results with circular references', () => {
+  process.emit(
+    'message',
+    [
+      CHILD_MESSAGE_INITIALIZE,
+      true, // Not really used here, but for type purity.
+      './my-fancy-worker',
+    ],
+    null,
+  );
+
+  process.emit(
+    'message',
+    [
+      CHILD_MESSAGE_CALL,
+      true, // Not really used here, but for type purity.
+      'fooCircularResult',
+      [],
+    ],
+    null,
+  );
+
+  const processCallError = spyProcessSend.mock.calls[0][0][1].error;
+  expect(processCallError.self).toBe(processCallError.self.self);
+});
+
 it('calls the main module if the method call is "default"', () => {
   process.emit(
     'message',
@@ -360,7 +392,7 @@ it('calls the main module if the method call is "default"', () => {
     null,
   );
 
-  expect(spyProcessSend.mock.calls[0][0]).toEqual([PARENT_MESSAGE_OK, 12345]);
+  expect(spyProcessSend.mock.calls[0][0]).toEqual([PARENT_MESSAGE_OK, 12_345]);
 });
 
 it('calls the main export if the method call is "default" and it is a Babel transpiled one', () => {
@@ -385,7 +417,7 @@ it('calls the main export if the method call is "default" and it is a Babel tran
     null,
   );
 
-  expect(spyProcessSend.mock.calls[0][0]).toEqual([PARENT_MESSAGE_OK, 67890]);
+  expect(spyProcessSend.mock.calls[0][0]).toEqual([PARENT_MESSAGE_OK, 67_890]);
 });
 
 it('removes the message listener on END message', () => {

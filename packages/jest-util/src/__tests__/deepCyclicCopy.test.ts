@@ -15,7 +15,7 @@ it('returns the same value for primitive or function values', () => {
   expect(deepCyclicCopy(null)).toBeNull();
   expect(deepCyclicCopy(true)).toBe(true);
   expect(deepCyclicCopy(42)).toBe(42);
-  expect(Number.isNaN(deepCyclicCopy(NaN))).toBe(true);
+  expect(Number.isNaN(deepCyclicCopy(Number.NaN))).toBe(true);
   expect(deepCyclicCopy('foo')).toBe('foo');
   expect(deepCyclicCopy(fn)).toBe(fn);
 });
@@ -53,6 +53,7 @@ it('handles cyclic dependencies', () => {
 
   const cyclic: Cyclic = {a: 42};
 
+  // eslint-disable-next-line unicorn/no-immediate-mutation
   cyclic.subcycle = {};
   cyclic.subcycle.baz = cyclic;
   cyclic.bar = cyclic;

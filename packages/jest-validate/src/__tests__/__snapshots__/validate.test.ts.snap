@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Repeated types within multiple valid examples are coalesced in error report 1`] = `
 "<red><bold><bold>●</intensity><bold> Validation Error</intensity>:</color>
@@ -38,6 +38,14 @@ exports[`displays warning for deprecated config options 1`] = `
 <yellow>  }</color>
 <yellow></color>
 <yellow>  Please update your configuration.</color>
+<yellow></color>"
+`;
+
+exports[`displays warning for maxWorkers when the example config does not have it 1`] = `
+"<yellow><bold><bold>●</intensity><bold> Validation Warning</intensity>:</color>
+<yellow></color>
+<yellow>  Unknown option <bold>"maxWorkers"</intensity> with value <bold>2</intensity> was found.</color>
+<yellow>  This is probably a typing mistake. Fixing it will remove this message.</color>
 <yellow></color>"
 `;
 

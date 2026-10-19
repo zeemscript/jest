@@ -5,9 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {performance} from 'perf_hooks';
-import chalk = require('chalk');
-import exit = require('exit');
+import {performance} from 'node:perf_hooks';
+import type {WriteStream} from 'node:tty';
+import chalk from 'chalk';
+import exit from 'exit-x';
 import * as fs from 'graceful-fs';
 import {CustomConsole} from '@jest/console';
 import type {AggregatedResult, TestContext} from '@jest/test-result';
@@ -65,12 +66,13 @@ export async function runCLI(
 
   if (argv.clearCache) {
     // stick in a Set to dedupe the deletions
-    new Set(configs.map(config => config.cacheDirectory)).forEach(
-      cacheDirectory => {
-        fs.rmSync(cacheDirectory, {force: true, recursive: true});
-        process.stdout.write(`Cleared ${cacheDirectory}\n`);
-      },
+    const uniqueConfigDirectories = new Set(
+      configs.map(config => config.cacheDirectory),
     );
+    for (const cacheDirectory of uniqueConfigDirectories) {
+      fs.rmSync(cacheDirectory, {force: true, recursive: true});
+      process.stdout.write(`Cleared ${cacheDirectory}\n`);
+    }
 
     exit(0);
   }
@@ -121,7 +123,7 @@ export async function runCLI(
 
   const {openHandles} = results;
 
-  if (openHandles && openHandles.length) {
+  if (openHandles && openHandles.length > 0) {
     const formatted = formatHandleErrors(openHandles, configs[0]);
 
     const openHandlesString = pluralize('open handle', formatted.length, 's');
@@ -141,9 +143,11 @@ export async function runCLI(
 const buildContextsAndHasteMaps = async (
   configs: Array<Config.ProjectConfig>,
   globalConfig: Config.GlobalConfig,
-  outputStream: NodeJS.WriteStream,
+  outputStream: WriteStream,
 ) => {
-  const hasteMapInstances = Array(configs.length);
+  const hasteMapInstances = Array.from<IHasteMap>({
+    length: configs.length,
+  });
   const contexts = await Promise.all(
     configs.map(async (config, index) => {
       createDirectory(config.cacheDirectory);
@@ -170,7 +174,7 @@ const _run10000 = async (
   globalConfig: Config.GlobalConfig,
   configs: Array<Config.ProjectConfig>,
   hasDeprecationWarnings: boolean,
-  outputStream: NodeJS.WriteStream,
+  outputStream: WriteStream,
   onComplete: OnCompleteCallback,
 ) => {
   // Queries to hg/git can take a while, so we need to start the process
@@ -195,8 +199,8 @@ const _run10000 = async (
       filterSetupPromise = (async () => {
         try {
           await rawFilter.setup();
-        } catch (err) {
-          return err;
+        } catch (error) {
+          return error;
         }
         return undefined;
       })();
@@ -221,24 +225,26 @@ const _run10000 = async (
   );
   performance.mark('jest/buildContextsAndHasteMaps:end');
 
-  globalConfig.watch || globalConfig.watchAll
-    ? await runWatch(
-        contexts,
-        configs,
-        hasDeprecationWarnings,
-        globalConfig,
-        outputStream,
-        hasteMapInstances,
-        filter,
-      )
-    : await runWithoutWatch(
-        globalConfig,
-        contexts,
-        outputStream,
-        onComplete,
-        changedFilesPromise,
-        filter,
-      );
+  if (globalConfig.watch || globalConfig.watchAll) {
+    await runWatch(
+      contexts,
+      configs,
+      hasDeprecationWarnings,
+      globalConfig,
+      outputStream,
+      hasteMapInstances,
+      filter,
+    );
+  } else {
+    await runWithoutWatch(
+      globalConfig,
+      contexts,
+      outputStream,
+      onComplete,
+      changedFilesPromise,
+      filter,
+    );
+  }
 };
 
 const runWatch = async (
@@ -246,7 +252,7 @@ const runWatch = async (
   _configs: Array<Config.ProjectConfig>,
   hasDeprecationWarnings: boolean,
   globalConfig: Config.GlobalConfig,
-  outputStream: NodeJS.WriteStream,
+  outputStream: WriteStream,
   hasteMapInstances: Array<IHasteMap>,
   filter?: Filter,
 ) => {
@@ -281,7 +287,7 @@ const runWatch = async (
 const runWithoutWatch = async (
   globalConfig: Config.GlobalConfig,
   contexts: Array<TestContext>,
-  outputStream: NodeJS.WriteStream,
+  outputStream: WriteStream,
   onComplete: OnCompleteCallback,
   changedFilesPromise?: ChangedFilesPromise,
   filter?: Filter,

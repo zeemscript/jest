@@ -24,7 +24,7 @@ beforeEach(() => {
   options = {plugins: [AsymmetricMatcher]};
 });
 
-[
+for (const type of [
   String,
   Function,
   Array,
@@ -34,7 +34,7 @@ beforeEach(() => {
   Function,
   () => {},
   function namedFunction() {},
-].forEach(type => {
+]) {
   test(`supports any(${fnNameFor(type)})`, () => {
     const result = prettyFormat(expect.any(type), options);
     expect(result).toBe(`Any<${fnNameFor(type)}>`);
@@ -55,7 +55,7 @@ beforeEach(() => {
       )}>,\n  },\n}`,
     );
   });
-});
+}
 
 test('anything()', () => {
   const result = prettyFormat(expect.anything(), options);
@@ -76,6 +76,16 @@ test('arrayNotContaining()', () => {
   1,
   2,
 ]`);
+});
+
+test('arrayOf()', () => {
+  const result = prettyFormat(expect.arrayOf(expect.any(String)), options);
+  expect(result).toBe('ArrayOf Any<String>');
+});
+
+test('notArrayOf()', () => {
+  const result = prettyFormat(expect.not.arrayOf(expect.any(String)), options);
+  expect(result).toBe('NotArrayOf Any<String>');
 });
 
 test('objectContaining()', () => {
@@ -149,7 +159,10 @@ test('closeTo(number)', () => {
 });
 
 test('closeTo(Infinity)', () => {
-  const result = prettyFormat(expect.closeTo(-Infinity), options);
+  const result = prettyFormat(
+    expect.closeTo(Number.NEGATIVE_INFINITY),
+    options,
+  );
   expect(result).toBe('NumberCloseTo -Infinity (2 digits)');
 });
 
@@ -180,6 +193,11 @@ test('supports multiple nested asymmetric matchers', () => {
           d: expect.stringContaining('jest'),
           e: expect.stringMatching('jest'),
           f: expect.objectContaining({test: 'case'}),
+          g: expect.arrayOf(
+            expect.objectContaining({
+              nested: expect.any(Number),
+            }),
+          ),
         }),
       },
     },
@@ -197,6 +215,9 @@ test('supports multiple nested asymmetric matchers', () => {
       "e": StringMatching /jest/,
       "f": ObjectContaining {
         "test": "case",
+      },
+      "g": ArrayOf ObjectContaining {
+        "nested": Any<Number>,
       },
     },
   },
@@ -246,12 +267,12 @@ describe('indent option', () => {
   // Tests assume that no strings in val contain multiple adjacent spaces!
   test('non-default: 0 spaces', () => {
     expect(prettyFormat(val, {...options, indent: 0})).toEqual(
-      result.replace(/ {2}/g, ''),
+      result.replaceAll(/ {2}/g, ''),
     );
   });
   test('non-default: 4 spaces', () => {
     expect(prettyFormat(val, {...options, indent: 4})).toEqual(
-      result.replace(/ {2}/g, ' '.repeat(4)),
+      result.replaceAll(/ {2}/g, ' '.repeat(4)),
     );
   });
 });

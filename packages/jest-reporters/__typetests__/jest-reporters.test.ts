@@ -5,13 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {expectError, expectType} from 'tsd-lite';
+import {expect} from 'tstyche';
 import {
-  AggregatedResult,
-  Config,
-  SnapshotSummary,
-  SummaryOptions,
-  TestResult,
+  type AggregatedResult,
+  type Config,
+  type SnapshotSummary,
+  type SummaryOptions,
+  type TestResult,
   utils,
 } from '@jest/reporters';
 
@@ -25,73 +25,117 @@ declare const testResult: TestResult;
 
 // utils.formatTestPath()
 
-expectType<string>(utils.formatTestPath(globalConfig, 'some/path'));
-expectType<string>(utils.formatTestPath(projectConfig, 'some/path'));
-expectError(utils.formatTestPath());
-expectError(utils.formatTestPath({}, 'some/path'));
-expectError(utils.formatTestPath(globalConfig, 123));
-expectError(utils.formatTestPath(projectConfig, 123));
+expect(utils.formatTestPath(globalConfig, 'some/path')).type.toBe<string>();
+expect(utils.formatTestPath(projectConfig, 'some/path')).type.toBe<string>();
+expect(utils.formatTestPath).type.not.toBeCallableWith();
+expect(utils.formatTestPath).type.not.toBeCallableWith({}, 'some/path');
+expect(utils.formatTestPath).type.not.toBeCallableWith(globalConfig, 123);
+expect(utils.formatTestPath).type.not.toBeCallableWith(projectConfig, 123);
 
 // utils.getResultHeader()
 
-expectType<string>(
+expect(
   utils.getResultHeader(testResult, globalConfig, projectConfig),
+).type.toBe<string>();
+expect(utils.getResultHeader(testResult, globalConfig)).type.toBe<string>();
+expect(utils.getResultHeader).type.not.toBeCallableWith();
+expect(utils.getResultHeader).type.not.toBeCallableWith({}, globalConfig);
+expect(utils.getResultHeader).type.not.toBeCallableWith(
+  {},
+  globalConfig,
+  projectConfig,
 );
-expectType<string>(utils.getResultHeader(testResult, globalConfig));
-expectError(utils.getResultHeader());
-expectError(utils.getResultHeader({}, globalConfig));
-expectError(utils.getResultHeader({}, globalConfig, projectConfig));
-expectError(utils.getResultHeader(testResult, {}));
-expectError(utils.getResultHeader(testResult, globalConfig, {}));
+expect(utils.getResultHeader).type.not.toBeCallableWith(testResult, {});
+expect(utils.getResultHeader).type.not.toBeCallableWith(
+  testResult,
+  globalConfig,
+  {},
+);
 
 // utils.getSnapshotStatus()
 
-expectType<Array<string>>(utils.getSnapshotStatus(snapshot, true));
-expectError(utils.getSnapshotStatus());
-expectError(utils.getSnapshotStatus({}, true));
-expectError(utils.getSnapshotStatus(snapshot, 123));
+expect(utils.getSnapshotStatus(snapshot, true)).type.toBe<Array<string>>();
+expect(utils.getSnapshotStatus).type.not.toBeCallableWith();
+expect(utils.getSnapshotStatus).type.not.toBeCallableWith({}, true);
+expect(utils.getSnapshotStatus).type.not.toBeCallableWith(snapshot, 123);
 
 // utils.getSnapshotSummary()
 
-expectType<Array<string>>(
+expect(
   utils.getSnapshotSummary(snapshotSummary, globalConfig, 'press `u`'),
+).type.toBe<Array<string>>();
+expect(utils.getSnapshotSummary).type.not.toBeCallableWith();
+expect(utils.getSnapshotSummary).type.not.toBeCallableWith(
+  {},
+  globalConfig,
+  'press `u`',
 );
-expectError(utils.getSnapshotSummary());
-expectError(utils.getSnapshotSummary({}, globalConfig, 'press `u`'));
-expectError(utils.getSnapshotSummary(snapshotSummary, {}, 'press `u`'));
-expectError(utils.getSnapshotSummary(snapshotSummary, globalConfig, true));
+expect(utils.getSnapshotSummary).type.not.toBeCallableWith(
+  snapshotSummary,
+  {},
+  'press `u`',
+);
+expect(utils.getSnapshotSummary).type.not.toBeCallableWith(
+  snapshotSummary,
+  globalConfig,
+  true,
+);
 
 // utils.getSummary()
 
-expectType<string>(utils.getSummary(aggregatedResults, summaryOptions));
-expectType<string>(utils.getSummary(aggregatedResults));
-expectError(utils.getSummary());
-expectError(utils.getSummary({}));
-expectError(utils.getSummary(aggregatedResults, true));
+expect(utils.getSummary(aggregatedResults, summaryOptions)).type.toBe<string>();
+expect(utils.getSummary(aggregatedResults)).type.toBe<string>();
+expect(utils.getSummary).type.not.toBeCallableWith();
+expect(utils.getSummary).type.not.toBeCallableWith({});
+expect(utils.getSummary).type.not.toBeCallableWith(aggregatedResults, true);
 
 // utils.printDisplayName()
 
-expectType<string>(utils.printDisplayName(projectConfig));
-expectError(utils.printDisplayName());
-expectError(utils.printDisplayName({}));
+expect(utils.printDisplayName(projectConfig)).type.toBe<string>();
+expect(utils.printDisplayName).type.not.toBeCallableWith();
+expect(utils.printDisplayName).type.not.toBeCallableWith({});
 
 // utils.relativePath()
 
-expectType<{basename: string; dirname: string}>(
-  utils.relativePath(globalConfig, 'some/path'),
-);
-expectType<{basename: string; dirname: string}>(
-  utils.relativePath(projectConfig, 'some/path'),
-);
-expectError(utils.relativePath());
-expectError(utils.relativePath({}, 'some/path'));
-expectError(utils.relativePath(projectConfig, true));
+expect(utils.relativePath(globalConfig, 'some/path')).type.toBe<{
+  basename: string;
+  dirname: string;
+}>();
+expect(utils.relativePath(projectConfig, 'some/path')).type.toBe<{
+  basename: string;
+  dirname: string;
+}>();
+expect(utils.relativePath).type.not.toBeCallableWith();
+expect(utils.relativePath).type.not.toBeCallableWith({}, 'some/path');
+expect(utils.relativePath).type.not.toBeCallableWith(projectConfig, true);
 
 // utils.trimAndFormatPath()
 
-expectType<string>(utils.trimAndFormatPath(2, globalConfig, 'some/path', 4));
-expectError(utils.trimAndFormatPath());
-expectError(utils.trimAndFormatPath(true, globalConfig, 'some/path', 4));
-expectError(utils.trimAndFormatPath(2, {}, 'some/path', 4));
-expectError(utils.trimAndFormatPath(2, globalConfig, true, 4));
-expectError(utils.trimAndFormatPath(2, globalConfig, 'some/path', '4'));
+expect(
+  utils.trimAndFormatPath(2, globalConfig, 'some/path', 4),
+).type.toBe<string>();
+expect(utils.trimAndFormatPath).type.not.toBeCallableWith();
+expect(utils.trimAndFormatPath).type.not.toBeCallableWith(
+  true,
+  globalConfig,
+  'some/path',
+  4,
+);
+expect(utils.trimAndFormatPath).type.not.toBeCallableWith(
+  2,
+  {},
+  'some/path',
+  4,
+);
+expect(utils.trimAndFormatPath).type.not.toBeCallableWith(
+  2,
+  globalConfig,
+  true,
+  4,
+);
+expect(utils.trimAndFormatPath).type.not.toBeCallableWith(
+  2,
+  globalConfig,
+  'some/path',
+  '4',
+);

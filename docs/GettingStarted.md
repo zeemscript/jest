@@ -67,8 +67,8 @@ If you'd like to learn more about running `jest` through the command line, take 
 
 Based on your project, Jest will ask you a few questions and will create a basic configuration file with a short description for each option:
 
-```bash
-jest --init
+```bash npm2yarn
+npm init jest@latest
 ```
 
 ### Using Babel
@@ -89,7 +89,8 @@ module.exports = {
 
 The ideal configuration for Babel will depend on your project. See [Babel's docs](https://babeljs.io/docs/en/) for more details.
 
-<details><summary markdown="span"><strong>Making your Babel config jest-aware</strong></summary>
+<details>
+  <summary markdown="span"><strong>Making your Babel config jest-aware</strong></summary>
 
 Jest will set `process.env.NODE_ENV` to `'test'` if it's not set to something else. You can use that in your configuration to conditionally setup only the compilation needed for Jest, e.g.
 
@@ -118,13 +119,21 @@ module.exports = {
 
 </details>
 
+## Using with bundlers
+
+Most of the time you do not need to do anything special to work with different bundlers - the exception is if you have some plugin or configuration which generates files or have custom file resolution rules.
+
 ### Using webpack
 
 Jest can be used in projects that use [webpack](https://webpack.js.org/) to manage assets, styles, and compilation. webpack does offer some unique challenges over other tools. Refer to the [webpack guide](Webpack.md) to get started.
 
 ### Using Vite
 
-Jest can be used in projects that use [vite](https://vitejs.dev/) to serve source code over native ESM to provide some frontend tooling, vite is an opinionated tool and does offer some out-of-the box workflows. Jest is not fully supported by vite due to how the [plugin system](https://github.com/vitejs/vite/issues/1955#issuecomment-776009094) from vite works, but there are some working examples for first-class jest integration using `vite-jest`, since this is not fully supported, you might as well read the [limitation of the `vite-jest`](https://github.com/sodatea/vite-jest/tree/main/packages/vite-jest#limitations-and-differences-with-commonjs-tests). Refer to the [vite guide](https://vitejs.dev/guide/) to get started.
+Jest is not supported by Vite due to incompatibilities with the Vite [plugin system](https://github.com/vitejs/vite/issues/1955#issuecomment-776009094).
+
+There are examples for Jest integration with Vite in the [vite-jest](https://github.com/sodatea/vite-jest) library. However, this library is not compatible with versions of Vite later than 2.4.2.
+
+One alternative is [Vitest](https://vitest.dev/) which has an API that is compatible with Jest.
 
 ### Using Parcel
 
@@ -153,6 +162,27 @@ module.exports = {
 ```
 
 However, there are some [caveats](https://babeljs.io/docs/en/babel-plugin-transform-typescript#caveats) to using TypeScript with Babel. Because TypeScript support in Babel is purely transpilation, Jest will not type-check your tests as they are run. If you want that, you can use [ts-jest](https://github.com/kulshekhar/ts-jest) instead, or just run the TypeScript compiler [tsc](https://www.typescriptlang.org/docs/handbook/compiler-options.html) separately (or as part of your build process).
+
+#### Via Node's type stripping
+
+Node erases type annotations itself, and Jest uses that whenever no transformer claims a `.ts`, `.mts` or `.cts` file. Set an empty `transform` to take the default `babel-jest` entry out of the way:
+
+```json title="package.json"
+{
+  "jest": {
+    "transform": {}
+  }
+}
+```
+
+Node replaces types with whitespace, so positions line up with your source and no source map is involved. It requires Node.js `^22.13.0` or `>=23.2.0`.
+
+Jest reads the module format the same way it does for JavaScript, so an ESM `.ts` or `.mts` file needs its extension in [`extensionsToTreatAsEsm`](Configuration.md#extensionstotreatasesm-arraystring). Node infers ESM from `.mts` and CommonJS from `.cts` on the extension alone; Jest does not do that yet.
+
+What Node cannot do is compile TypeScript features that emit code. `enum`, `namespace` and parameter properties throw, and so does JSX, which means `.tsx` still needs Babel or `ts-jest`. Two more things to keep in mind:
+
+- `jest.mock()` calls are no longer hoisted above the imports of the module they mock, because `babel-plugin-jest-hoist` is not running. Move them above your `require` calls yourself, or use `jest.unstable_mockModule` with dynamic `import()`.
+- A type imported as a value (`import {SomeType} from 'pkg'`) survives the erasure and fails at link time. Write `import type` for anything that only exists in the type system.
 
 #### Via `ts-jest`
 
@@ -204,3 +234,45 @@ npm install --save-dev @types/jest
 `@types/jest` is a third party library maintained at [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/jest), hence the latest Jest features or versions may not be covered yet. Try to match versions of Jest and `@types/jest` as closely as possible. For example, if you are using Jest `27.4.0` then installing `27.4.x` of `@types/jest` is ideal.
 
 :::
+
+### Using ESLint
+
+Jest can be used with ESLint without any further configuration as long as you import the [Jest global helpers](GlobalAPI.md) (`describe`, `it`, etc.) from `@jest/globals` before using them in your test file. This is necessary to avoid `no-undef` errors from ESLint, which doesn't know about the Jest globals.
+
+If you'd like to avoid these imports, you can configure your [ESLint environment](https://eslint.org/docs/latest/use/configure/language-options#specifying-environments) to support these globals by adding the `jest` environment:
+
+```js
+import {defineConfig} from 'eslint/config';
+import globals from 'globals';
+
+export default defineConfig([
+  {
+    files: ['**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+      },
+    },
+    rules: {
+      'no-unused-vars': 'warn',
+      'no-undef': 'warn',
+    },
+  },
+]);
+```
+
+Or use [`eslint-plugin-jest`](https://github.com/jest-community/eslint-plugin-jest), which has a similar effect:
+
+```json
+{
+  "overrides": [
+    {
+      "files": ["tests/**/*"],
+      "plugins": ["jest"],
+      "env": {
+        "jest/globals": true
+      }
+    }
+  ]
+}
+```

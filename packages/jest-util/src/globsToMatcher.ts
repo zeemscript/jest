@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import picomatch = require('picomatch');
+import picomatch from 'picomatch';
 import replacePathSepForGlob from './replacePathSepForGlob';
 
 type Matcher = (str: string) => boolean;
@@ -14,8 +14,6 @@ const globsToMatchersMap = new Map<
   string,
   {isMatch: Matcher; negated: boolean}
 >();
-
-const picomatchOptions = {dot: true};
 
 /**
  * Converts a list of globs into a function that matches a path against the
@@ -34,28 +32,42 @@ const picomatchOptions = {dot: true};
  * isMatch('pizza.js'); // true
  * isMatch('pizza.test.js'); // false
  */
-export default function globsToMatcher(globs: Array<string>): Matcher {
+export default function globsToMatcher(
+  globs: Array<string>,
+  picomatchOptions?: picomatch.PicomatchOptions,
+): Matcher {
+  const dot = picomatchOptions?.dot ?? true;
   if (globs.length === 0) {
     // Since there were no globs given, we can simply have a fast path here and
     // return with a very simple function.
     return () => false;
   }
 
+  // The cache is keyed on the glob alone, so it can only answer for matchers
+  // that do not depend on caller supplied options.
+  const cacheable = picomatchOptions === undefined;
+
   const matchers = globs.map(glob => {
-    if (!globsToMatchersMap.has(glob)) {
-      const isMatch = picomatch(glob, picomatchOptions, true);
+    const cached = cacheable ? globsToMatchersMap.get(glob) : undefined;
 
-      const matcher = {
-        isMatch,
-        // Matchers that are negated have different behavior than matchers that
-        // are not negated, so we need to store this information ahead of time.
-        negated: isMatch.state.negated || !!isMatch.state.negatedExtglob,
-      };
+    if (cached) {
+      return cached;
+    }
 
+    const isMatch = picomatch(glob, {...picomatchOptions, dot}, true);
+
+    const matcher = {
+      isMatch,
+      // Matchers that are negated have different behavior than matchers that
+      // are not negated, so we need to store this information ahead of time.
+      negated: isMatch.state.negated || !!isMatch.state.negatedExtglob,
+    };
+
+    if (cacheable) {
       globsToMatchersMap.set(glob, matcher);
     }
 
-    return globsToMatchersMap.get(glob)!;
+    return matcher;
   });
 
   return path => {
@@ -63,8 +75,8 @@ export default function globsToMatcher(globs: Array<string>): Matcher {
     let kept = undefined;
     let negatives = 0;
 
-    for (let i = 0; i < matchers.length; i++) {
-      const {isMatch, negated} = matchers[i];
+    for (const matcher of matchers) {
+      const {isMatch, negated} = matcher;
 
       if (negated) {
         negatives++;

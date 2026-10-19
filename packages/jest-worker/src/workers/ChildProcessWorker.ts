@@ -5,28 +5,29 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {ChildProcess, ForkOptions, fork} from 'child_process';
-import {totalmem} from 'os';
-import mergeStream = require('merge-stream');
+import {type ChildProcess, type ForkOptions, fork} from 'node:child_process';
+import {totalmem} from 'node:os';
+import mergeStream from 'merge-stream';
 import {stdout as stdoutSupportsColor} from 'supports-color';
 import {
   CHILD_MESSAGE_INITIALIZE,
   CHILD_MESSAGE_MEM_USAGE,
-  ChildMessage,
-  OnCustomMessage,
-  OnEnd,
-  OnStart,
+  type ChildMessage,
+  type OnCustomMessage,
+  type OnEnd,
+  type OnStart,
   PARENT_MESSAGE_CLIENT_ERROR,
   PARENT_MESSAGE_CUSTOM,
   PARENT_MESSAGE_MEM_USAGE,
   PARENT_MESSAGE_OK,
   PARENT_MESSAGE_SETUP_ERROR,
-  ParentMessage,
-  WorkerInterface,
-  WorkerOptions,
+  type ParentMessage,
+  type WorkerInterface,
+  type WorkerOptions,
   WorkerStates,
 } from '../types';
 import WorkerAbstract from './WorkerAbstract';
+import {unpackMessage} from './safeMessageTransferring';
 
 const SIGNAL_BASE_EXIT_CODE = 128;
 const SIGKILL_EXIT_CODE = SIGNAL_BASE_EXIT_CODE + 9;
@@ -89,7 +90,7 @@ export default class ChildProcessWorker
     this._stdout = null;
     this._stderr = null;
     this._childIdleMemoryUsage = null;
-    this._childIdleMemoryUsageLimit = options.idleMemoryLimit || null;
+    this._childIdleMemoryUsageLimit = options.idleMemoryLimit ?? null;
 
     this._childWorkerPath =
       options.childWorkerPath || require.resolve('./processChild');
@@ -232,13 +233,14 @@ export default class ChildProcessWorker
       ) {
         if (
           this.state === WorkerStates.OK ||
-          this.state === WorkerStates.STARTING
+          this.state === WorkerStates.STARTING ||
+          this.state === WorkerStates.SHUT_DOWN
         ) {
           this.state = WorkerStates.OUT_OF_MEMORY;
         }
       }
-    } catch (err) {
-      console.error('Error looking for out of memory crash', err);
+    } catch (error) {
+      console.error('Error looking for out of memory crash', error);
     }
   }
 
@@ -263,7 +265,7 @@ export default class ChildProcessWorker
 
     switch (response[0]) {
       case PARENT_MESSAGE_OK:
-        this._onProcessEnd(null, response[1]);
+        this._onProcessEnd(null, unpackMessage(response[1]));
         break;
 
       case PARENT_MESSAGE_CLIENT_ERROR:
@@ -297,7 +299,7 @@ export default class ChildProcessWorker
         break;
 
       case PARENT_MESSAGE_CUSTOM:
-        this._onCustomMessage(response[1]);
+        this._onCustomMessage(unpackMessage(response[1]));
         break;
 
       case PARENT_MESSAGE_MEM_USAGE:
@@ -340,11 +342,14 @@ export default class ChildProcessWorker
         this._childIdleMemoryUsage &&
         this._childIdleMemoryUsage > limit
       ) {
-        this.state = WorkerStates.RESTARTING;
-
-        this.killChild();
+        this._restart();
       }
     }
+  }
+
+  private _restart(): void {
+    this.state = WorkerStates.RESTARTING;
+    this.killChild();
   }
 
   private _onExit(exitCode: number | null, signal: NodeJS.Signals | null) {
@@ -408,9 +413,9 @@ export default class ChildProcessWorker
         // was killed externally. Log this fact so it's more clear to users that
         // something went wrong externally, rather than a bug in Jest itself.
         const error = new Error(
-          signal != null
-            ? `A jest worker process (pid=${this._child.pid}) was terminated by another process: signal=${signal}, exitCode=${exitCode}. Operating system logs may contain more information on why this occurred.`
-            : `A jest worker process (pid=${this._child.pid}) crashed for an unknown reason: exitCode=${exitCode}`,
+          signal == null
+            ? `A jest worker process (pid=${this._child.pid}) crashed for an unknown reason: exitCode=${exitCode}`
+            : `A jest worker process (pid=${this._child.pid}) was terminated by another process: signal=${signal}, exitCode=${exitCode}. Operating system logs may contain more information on why this occurred.`,
         );
 
         this._onProcessEnd(error, null);
@@ -438,11 +443,16 @@ export default class ChildProcessWorker
       this._request = null;
 
       if (
-        this._childIdleMemoryUsageLimit &&
+        this._childIdleMemoryUsageLimit !== null &&
         this._child.connected &&
         hasRequest
       ) {
-        this.checkMemoryUsage();
+        if (this._childIdleMemoryUsageLimit === 0) {
+          // Special case: `idleMemoryLimit` of `0` means always restart.
+          this._restart();
+        } else {
+          this.checkMemoryUsage();
+        }
       }
 
       return onProcessEnd(...args);
@@ -486,7 +496,7 @@ export default class ChildProcessWorker
    * @returns Process id.
    */
   getWorkerSystemId(): number {
-    return this._child.pid;
+    return this._child.pid!;
   }
 
   getStdout(): NodeJS.ReadableStream | null {
@@ -540,17 +550,17 @@ export default class ChildProcessWorker
    * Gets updated memory usage and restarts if required
    */
   checkMemoryUsage(): void {
-    if (this._childIdleMemoryUsageLimit) {
+    if (this._childIdleMemoryUsageLimit === null) {
+      console.warn(
+        'Memory usage of workers can only be checked if a limit is set',
+      );
+    } else {
       this._memoryUsageCheck = true;
       this._child.send([CHILD_MESSAGE_MEM_USAGE], err => {
         if (err) {
           console.error('Unable to check memory usage', err);
         }
       });
-    } else {
-      console.warn(
-        'Memory usage of workers can only be checked if a limit is set',
-      );
     }
   }
 

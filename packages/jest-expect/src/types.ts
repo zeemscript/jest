@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {AsymmetricMatchers, BaseExpect, Matchers} from 'expect';
+import type {AsymmetricMatchers, BaseExpect, Inverse, Matchers} from 'expect';
 import type {
   SnapshotMatchers,
   SnapshotState,
@@ -13,7 +13,9 @@ import type {
 } from 'jest-snapshot';
 
 export type JestExpect = {
-  <T = unknown>(actual: T): JestMatchers<void, T> &
+  <T = unknown>(
+    actual: T,
+  ): JestMatchers<void, T> &
     Inverse<JestMatchers<void, T>> &
     PromiseMatchers<T>;
   // Duplicated due to https://github.com/microsoft/rushstack/issues/1709
@@ -21,13 +23,6 @@ export type JestExpect = {
 } & BaseExpect &
   AsymmetricMatchers &
   Inverse<Omit<AsymmetricMatchers, 'any' | 'anything'>>;
-
-type Inverse<Matchers> = {
-  /**
-   * Inverse next matcher. If you know how to test something, `.not` lets you test its opposite.
-   */
-  not: Matchers;
-};
 
 type JestMatchers<R extends void | Promise<void>, T> = Matchers<R, T> &
   SnapshotMatchers<R, T>;
@@ -50,6 +45,8 @@ type PromiseMatchers<T = unknown> = {
 declare module 'expect' {
   interface MatcherState {
     snapshotState: SnapshotState;
+    /** Whether the test was called with `test.failing()` */
+    testFailing?: boolean;
   }
   interface BaseExpect {
     addSnapshotSerializer: typeof addSerializer;

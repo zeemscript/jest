@@ -6,7 +6,7 @@
  *
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {Global} from '@jest/types';
 import {format as pretty} from 'pretty-format';
 
@@ -17,7 +17,7 @@ const RECEIVED_COLOR = chalk.red;
 
 export const validateArrayTable = (table: unknown): void => {
   if (!Array.isArray(table)) {
-    throw new Error(
+    throw new TypeError(
       '`.each` must be called with an Array or Tagged Template Literal.\n\n' +
         `Instead was called with: ${pretty(table, {
           maxDepth: 1,

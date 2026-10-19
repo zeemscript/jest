@@ -120,7 +120,9 @@ describe('Farm', () => {
   });
 
   it('handles null computeWorkerKey, sending to first worker', async () => {
-    const computeWorkerKey = jest.fn(() => null);
+    const computeWorkerKey = jest.fn<
+      (method: string, ...args: Array<unknown>) => string | null
+    >(() => null);
 
     const farm = new Farm(4, callback, {computeWorkerKey});
 
@@ -144,7 +146,7 @@ describe('Farm', () => {
 
   it('sends the same worker key to the same worker', async () => {
     const computeWorkerKey = jest
-      .fn<() => string>()
+      .fn<(method: string, ...args: Array<unknown>) => string | null>()
       .mockReturnValueOnce('one')
       .mockReturnValueOnce('two')
       .mockReturnValueOnce('one');
@@ -210,18 +212,18 @@ describe('Farm', () => {
     const farm = new Farm(4, callback);
 
     const promise = farm.doWork('car', 'plane');
-    let error = null;
+    let thrownError = null;
 
     workerReply(0, new TypeError('Massively broken'));
 
     try {
       await promise;
-    } catch (err) {
-      error = err;
+    } catch (error) {
+      thrownError = error;
     }
 
-    expect(error).not.toBeNull();
-    expect(error).toBeInstanceOf(TypeError);
+    expect(thrownError).not.toBeNull();
+    expect(thrownError).toBeInstanceOf(TypeError);
   });
 
   it('checks that once a sticked task finishes, next time is sent to that worker', async () => {

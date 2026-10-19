@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import colorize from './colorize';
 
 const DOTS = '...';
@@ -16,7 +16,7 @@ export default function formatTestNameByPattern(
   pattern: string,
   width: number,
 ): string {
-  const inlineTestName = testName.replace(/(\r\n|\n|\r)/gm, ENTER);
+  const inlineTestName = testName.replaceAll(/(\r\n|\n|\r)/gm, ENTER);
 
   let regexp;
 

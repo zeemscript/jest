@@ -6,7 +6,7 @@
  */
 
 import * as path from 'path';
-import slash = require('slash');
+import slash from 'slash';
 import runJest from '../runJest';
 
 const MULTIPLE_CONFIGS_WARNING_TEXT = 'Multiple configurations found';
@@ -20,7 +20,7 @@ test('multiple configs will throw error', () => {
   expect(exitCode).toBe(1);
   expect(stderr).toContain(MULTIPLE_CONFIGS_WARNING_TEXT);
 
-  const cleanStdErr = stderr.replace(new RegExp(rootDir, 'g'), '<rootDir>');
+  const cleanStdErr = stderr.replaceAll(new RegExp(rootDir, 'g'), '<rootDir>');
   expect(cleanStdErr).toMatchSnapshot();
 });
 
@@ -33,4 +33,17 @@ test('multiple configs error can be suppressed by using --config', () => {
     },
   );
   expect(exitCode).toBe(0);
+});
+
+test('should works correctly when using different loaders in different projects', () => {
+  const {exitCode, stdout, stderr} = runJest(
+    'multi-project-multiple-configs',
+    ['--projects', 'prj-1', 'prj-2'],
+    {
+      skipPkgJsonCheck: true,
+    },
+  );
+  expect(exitCode).toBe(0);
+  console.log(stdout);
+  console.log(stderr);
 });

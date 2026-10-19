@@ -5,16 +5,17 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
-import {getType} from 'jest-get-type';
+import chalk from 'chalk';
+import {getType} from '@jest/get-type';
 import {
-  PrettyFormatOptions,
+  type PrettyFormatOptions,
   format as prettyFormat,
   plugins as prettyFormatPlugins,
 } from 'pretty-format';
 import {DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT, Diff} from './cleanupSemantic';
 import {NO_DIFF_MESSAGE, SIMILAR_MESSAGE} from './constants';
 import {diffLinesRaw, diffLinesUnified, diffLinesUnified2} from './diffLines';
+import {escapeControlCharacters} from './escapeControlCharacters';
 import {normalizeDiffOptions} from './normalizeDiffOptions';
 import {diffStringsRaw, diffStringsUnified} from './printDiffs';
 import type {DiffOptions} from './types';
@@ -96,7 +97,11 @@ export function diff(a: any, b: any, options?: DiffOptions): string | null {
 
   switch (aType) {
     case 'string':
-      return diffLinesUnified(a.split('\n'), b.split('\n'), options);
+      return diffLinesUnified(
+        escapeControlCharacters(a).split('\n'),
+        escapeControlCharacters(b).split('\n'),
+        options,
+      );
     case 'boolean':
     case 'number':
       return comparePrimitive(a, b, options);
@@ -122,11 +127,11 @@ function comparePrimitive(
 }
 
 function sortMap(map: Map<unknown, unknown>) {
-  return new Map(Array.from(map.entries()).sort());
+  return new Map([...map].sort());
 }
 
 function sortSet(set: Set<unknown>) {
-  return new Set(Array.from(set.values()).sort());
+  return new Set([...set].sort());
 }
 
 function compareObjects(

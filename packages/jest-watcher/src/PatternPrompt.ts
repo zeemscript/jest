@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import ansiEscapes = require('ansi-escapes');
-import chalk = require('chalk');
+import ansiEscapes from 'ansi-escapes';
+import chalk from 'chalk';
 import {specialChars} from 'jest-util';
 import type Prompt from './lib/Prompt';
 import type {ScrollOptions} from './types';
@@ -41,7 +41,7 @@ export default abstract class PatternPrompt {
     this._pipe.write(ansiEscapes.cursorHide);
     this._pipe.write(CLEAR);
 
-    if (options && options.header) {
+    if (typeof options?.header === 'string' && options.header) {
       this._pipe.write(`${options.header}\n`);
       this._currentUsageRows = usageRows + options.header.split('\n').length;
     } else {

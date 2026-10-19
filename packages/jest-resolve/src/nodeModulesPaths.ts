@@ -7,7 +7,7 @@
  * Adapted from: https://github.com/substack/node-resolve
  */
 
-import * as path from 'path';
+import * as path from 'node:path';
 import {tryRealpath} from 'jest-util';
 
 type NodeModulesPathsOptions = {
@@ -21,7 +21,7 @@ export default function nodeModulesPaths(
 ): Array<string> {
   const modules =
     options && options.moduleDirectory
-      ? Array.from(options.moduleDirectory)
+      ? [...options.moduleDirectory]
       : ['node_modules'];
 
   // ensure that `basedir` is an absolute path at this point,
@@ -47,7 +47,7 @@ export default function nodeModulesPaths(
 
   const paths: Array<string> = [physicalBasedir];
   let parsed = path.parse(physicalBasedir);
-  while (parsed.dir !== paths[paths.length - 1]) {
+  while (parsed.dir !== paths.at(-1)) {
     paths.push(parsed.dir);
     parsed = path.parse(parsed.dir);
   }
@@ -76,12 +76,15 @@ export default function nodeModulesPaths(
 function findGlobalPaths(): Array<string> {
   const {root} = path.parse(process.cwd());
   const globalPath = path.join(root, 'node_modules');
-  const resolvePaths = require.resolve.paths('/');
+  const resolvePaths =
+    typeof require.resolve.paths === 'function'
+      ? require.resolve.paths('/')
+      : null;
 
   if (resolvePaths) {
     // the global paths start one after the root node_modules
     const rootIndex = resolvePaths.indexOf(globalPath);
-    return rootIndex > -1 ? resolvePaths.slice(rootIndex + 1) : [];
+    return rootIndex === -1 ? [] : resolvePaths.slice(rootIndex + 1);
   }
   return [];
 }

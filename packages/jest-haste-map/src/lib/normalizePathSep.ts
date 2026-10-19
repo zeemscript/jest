@@ -5,14 +5,14 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
+import * as path from 'node:path';
 
 let normalizePathSep: (string: string) => string;
 if (path.sep === '/') {
   normalizePathSep = (filePath: string): string => filePath;
 } else {
   normalizePathSep = (filePath: string): string =>
-    filePath.replace(/\//g, path.sep);
+    filePath.replaceAll('/', path.sep);
 }
 
 export default normalizePathSep;

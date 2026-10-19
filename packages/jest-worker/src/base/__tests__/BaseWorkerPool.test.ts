@@ -7,13 +7,16 @@
 
 import {
   CHILD_MESSAGE_END,
-  WorkerInterface,
-  WorkerOptions,
-  WorkerPoolOptions,
+  type WorkerInterface,
+  type WorkerOptions,
+  type WorkerPoolOptions,
 } from '../../types';
 import BaseWorkerPool from '../BaseWorkerPool';
 
-const Worker = jest.fn<(workerOptions: WorkerOptions) => WorkerInterface>();
+const Worker =
+  jest.fn<
+    (workerOptions: Omit<WorkerOptions, 'resourceLimits'>) => WorkerInterface
+  >();
 
 const mockSend = jest.fn();
 
@@ -34,12 +37,12 @@ describe('BaseWorkerPool', () => {
         ({
           forceExit: jest.fn(),
           getStderr: () =>
-            ({once() {}, pipe() {}} as unknown as NodeJS.ReadStream),
+            ({once() {}, pipe() {}}) as unknown as NodeJS.ReadStream,
           getStdout: () =>
-            ({once() {}, pipe() {}} as unknown as NodeJS.ReadStream),
+            ({once() {}, pipe() {}}) as unknown as NodeJS.ReadStream,
           send: jest.fn(),
           waitForExit: () => Promise.resolve(),
-        } as unknown as WorkerInterface),
+        }) as unknown as WorkerInterface,
     );
   });
 
@@ -138,15 +141,15 @@ describe('BaseWorkerPool', () => {
               pipe(errStream: NodeJS.WritableStream) {
                 err.push(errStream);
               },
-            } as unknown as NodeJS.ReadableStream),
+            }) as unknown as NodeJS.ReadableStream,
           getStdout: () =>
             ({
               once() {},
               pipe(outStream: NodeJS.WritableStream) {
                 out.push(outStream);
               },
-            } as unknown as NodeJS.ReadableStream),
-        } as WorkerInterface),
+            }) as unknown as NodeJS.ReadableStream,
+        }) as WorkerInterface,
     );
 
     const farm = new MockWorkerPool('/tmp/baz.js', {
@@ -181,7 +184,7 @@ describe('BaseWorkerPool', () => {
           getStderr: () => null,
           getStdout: () => null,
           send: () => null,
-        } as unknown as WorkerInterface),
+        }) as unknown as WorkerInterface,
     );
 
     const farm = new MockWorkerPool('/tmp/baz.js', {
@@ -225,7 +228,7 @@ describe('BaseWorkerPool', () => {
             getStdout: () => null,
             send: jest.fn(),
             waitForExit: () => Promise.resolve(),
-          } as unknown as WorkerInterface),
+          }) as unknown as WorkerInterface,
       );
 
       const pool = new MockWorkerPool('/tmp/baz.js', {
@@ -236,6 +239,89 @@ describe('BaseWorkerPool', () => {
       } as unknown as WorkerPoolOptions);
 
       expect(await pool.end()).toEqual({forceExited: false});
+    });
+
+    it('uses workerGracefulExitTimeout option for force exit delay', async () => {
+      jest.useFakeTimers();
+
+      try {
+        let worker0Exited: (a?: unknown) => void;
+        const mockForceExit = jest.fn(() => {
+          worker0Exited();
+        });
+        Worker.mockImplementation(
+          () =>
+            ({
+              forceExit: mockForceExit,
+              getStderr: () => null,
+              getStdout: () => null,
+              send: jest.fn(),
+              waitForExit: () =>
+                new Promise(resolve => (worker0Exited = resolve)),
+            }) as unknown as WorkerInterface,
+        );
+
+        const pool = new MockWorkerPool('/tmp/baz.js', {
+          forkOptions: {execArgv: []},
+          maxRetries: 6,
+          numWorkers: 1,
+          setupArgs: [],
+          workerGracefulExitTimeout: 2000,
+        } as unknown as WorkerPoolOptions);
+
+        const endPromise = pool.end();
+
+        // At 500ms (default), forceExit should NOT have been called
+        jest.advanceTimersByTime(500);
+        expect(mockForceExit).not.toHaveBeenCalled();
+
+        // At 2000ms (custom timeout), forceExit SHOULD be called
+        jest.advanceTimersByTime(1500);
+        expect(await endPromise).toEqual({forceExited: true});
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('defaults to 500ms when workerGracefulExitTimeout is not set', async () => {
+      jest.useFakeTimers();
+
+      try {
+        let worker0Exited: (a?: unknown) => void;
+        const mockForceExit = jest.fn(() => {
+          worker0Exited();
+        });
+        Worker.mockImplementation(
+          () =>
+            ({
+              forceExit: mockForceExit,
+              getStderr: () => null,
+              getStdout: () => null,
+              send: jest.fn(),
+              waitForExit: () =>
+                new Promise(resolve => (worker0Exited = resolve)),
+            }) as unknown as WorkerInterface,
+        );
+
+        const pool = new MockWorkerPool('/tmp/baz.js', {
+          forkOptions: {execArgv: []},
+          maxRetries: 6,
+          numWorkers: 1,
+          setupArgs: [],
+        } as unknown as WorkerPoolOptions);
+
+        const endPromise = pool.end();
+
+        // At 499ms, forceExit should NOT have been called
+        jest.advanceTimersByTime(499);
+        expect(mockForceExit).not.toHaveBeenCalled();
+
+        // At 500ms (default), forceExit SHOULD be called
+        jest.advanceTimersByTime(1);
+        expect(await endPromise).toEqual({forceExited: true});
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('force exits workers that do not exit gracefully and resolves with forceExited=true', async () => {
@@ -253,7 +339,7 @@ describe('BaseWorkerPool', () => {
             send: jest.fn(),
             waitForExit: () =>
               new Promise(resolve => (worker0Exited = resolve)),
-          } as unknown as WorkerInterface),
+          }) as unknown as WorkerInterface,
       ).mockImplementation(
         () =>
           ({
@@ -262,7 +348,7 @@ describe('BaseWorkerPool', () => {
             getStdout: () => null,
             send: jest.fn(),
             waitForExit: () => Promise.resolve(),
-          } as unknown as WorkerInterface),
+          }) as unknown as WorkerInterface,
       );
 
       const pool = new MockWorkerPool('/tmp/baz.js', {

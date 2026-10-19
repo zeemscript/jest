@@ -5,30 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {
-  expectAssignable,
-  expectError,
-  expectNotAssignable,
-  expectType,
-} from 'tsd-lite';
+import {describe, expect, test} from 'tstyche';
 import {jestExpect} from '@jest/expect';
-import {expect} from 'expect';
-import type {Plugin} from 'pretty-format';
-
-expectType<void>(jestExpect({}).toMatchSnapshot());
-
-expectError(() => {
-  expect({}).toMatchSnapshot();
-});
-
-expectType<void>(jestExpect.addSnapshotSerializer({} as Plugin));
-
-expectError(() => {
-  expect.addSnapshotSerializer();
-});
-
-expectAssignable<typeof expect>(jestExpect);
-expectNotAssignable<typeof jestExpect>(expect);
+import {expect as _expect} from 'expect';
 
 declare module 'expect' {
   interface Matchers<R, T> {
@@ -36,9 +15,29 @@ declare module 'expect' {
   }
 }
 
-expectType<void>(jestExpect(100).toTypedEqual(100));
-expectType<void>(jestExpect(101).not.toTypedEqual(101));
+describe('JestExpect', () => {
+  test('defines the `.toMatchSnapshot()` matcher', () => {
+    expect(jestExpect(null)).type.toHaveProperty('toMatchSnapshot');
 
-expectError(() => {
-  jestExpect(100).toTypedEqual('three');
+    expect(_expect(null)).type.not.toHaveProperty('toMatchSnapshot');
+  });
+
+  test('defines the `.addSnapshotSerializer()` method', () => {
+    expect(jestExpect).type.toHaveProperty('addSnapshotSerializer');
+
+    expect(_expect).type.not.toHaveProperty('addSnapshotSerializer');
+  });
+
+  test('is superset of `Expect`', () => {
+    expect(jestExpect).type.toBeAssignableTo(_expect);
+
+    expect(_expect).type.not.toBeAssignableTo(jestExpect);
+  });
+
+  test('allows type inference of the `actual` argument', () => {
+    expect(jestExpect(100).toTypedEqual(100)).type.toBe<void>();
+    expect(jestExpect(101).not.toTypedEqual(100)).type.toBe<void>();
+
+    expect(jestExpect(100).toTypedEqual).type.not.toBeCallableWith('three');
+  });
 });

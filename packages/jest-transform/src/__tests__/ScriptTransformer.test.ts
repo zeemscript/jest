@@ -19,6 +19,7 @@ import type {
   Transformer,
   TransformerFactory,
 } from '../types';
+import {supportsTypeStripping} from '../stripTypeScriptTypes';
 
 jest
   .mock('graceful-fs', () => ({
@@ -76,16 +77,14 @@ jest
 jest.mock(
   'test_preprocessor',
   () => {
-    const escapeStrings = (str: string) => str.replace(/'/, "'");
-
     const transformer: Transformer = {
       getCacheKey: jest.fn(() => 'ab'),
       process: (content, filename, config) => ({
         code: (require('dedent') as typeof import('dedent').default)`
           const TRANSFORMED = {
-            filename: '${escapeStrings(filename)}',
-            script: '${escapeStrings(content)}',
-            config: '${escapeStrings(JSON.stringify(config))}',
+            filename: '${filename}',
+            script: '${content}',
+            config: '${JSON.stringify(config)}',
           };
         `,
       }),
@@ -99,17 +98,15 @@ jest.mock(
 jest.mock(
   'test_async_preprocessor',
   () => {
-    const escapeStrings = (str: string) => str.replace(/'/, "'");
-
     const transformer: AsyncTransformer = {
       getCacheKeyAsync: jest.fn(() => Promise.resolve('ab')),
       processAsync: (content, filename, config) =>
         Promise.resolve({
           code: (require('dedent') as typeof import('dedent').default)`
           const TRANSFORMED = {
-            filename: '${escapeStrings(filename)}',
-            script: '${escapeStrings(content)}',
-            config: '${escapeStrings(JSON.stringify(config))}',
+            filename: '${filename}',
+            script: '${content}',
+            config: '${JSON.stringify(config)}',
           };
         `,
         }),
@@ -438,7 +435,7 @@ describe('ScriptTransformer', () => {
       [[], '/fruits/grapefruit.js'],
     ];
 
-    incorrectReturnValues.forEach(([returnValue, filePath]) => {
+    for (const [returnValue, filePath] of incorrectReturnValues) {
       mockInvariant(typeof filePath === 'string');
       jest
         .mocked(
@@ -448,11 +445,11 @@ describe('ScriptTransformer', () => {
       expect(() =>
         scriptTransformer.transform(filePath, getCoverageOptions()),
       ).toThrowErrorMatchingSnapshot();
-    });
+    }
 
     const correctReturnValues = [[{code: 'code'}, '/fruits/kiwi.js']];
 
-    correctReturnValues.forEach(([returnValue, filePath]) => {
+    for (const [returnValue, filePath] of correctReturnValues) {
       mockInvariant(typeof filePath === 'string');
       jest
         .mocked(
@@ -462,7 +459,7 @@ describe('ScriptTransformer', () => {
       expect(() =>
         scriptTransformer.transform(filePath, getCoverageOptions()),
       ).not.toThrow();
-    });
+    }
   });
 
   it("throws an error if `processAsync` doesn't return a promise of object containing `code` key with processed string", async () => {
@@ -481,7 +478,7 @@ describe('ScriptTransformer', () => {
       TransformedSource,
       string,
     ]): Promise<any> => {
-      const processorName = `passthrough-preprocessor${filePath.replace(
+      const processorName = `passthrough-preprocessor${filePath.replaceAll(
         /\.|\//g,
         '-',
       )}`;
@@ -1008,7 +1005,7 @@ describe('ScriptTransformer', () => {
     );
   });
 
-  it('warns of unparseable inlined source maps from the preprocessor', async () => {
+  it('warns of unparsable inlined source maps from the preprocessor', async () => {
     const warn = console.warn;
     console.warn = jest.fn();
 
@@ -1052,7 +1049,7 @@ describe('ScriptTransformer', () => {
     console.warn = warn;
   });
 
-  it('in async mode, warns of unparseable inlined source maps from the preprocessor', async () => {
+  it('in async mode, warns of unparsable inlined source maps from the preprocessor', async () => {
     const warn = console.warn;
     console.warn = jest.fn();
 
@@ -1096,7 +1093,7 @@ describe('ScriptTransformer', () => {
     console.warn = warn;
   });
 
-  it('warns of unparseable inlined source maps from the async preprocessor', async () => {
+  it('warns of unparsable inlined source maps from the async preprocessor', async () => {
     const warn = console.warn;
     console.warn = jest.fn();
 
@@ -1271,6 +1268,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['content'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,OAAO',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -1320,6 +1318,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['content'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,OAAO',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -1369,6 +1368,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['content'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,OAAO',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -1410,6 +1410,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['module.exports = "banana";'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,MAAM,CAACC,OAAO,GAAG,QAAQ',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -1450,6 +1451,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['module.exports = "banana";'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,MAAM,CAACC,OAAO,GAAG,QAAQ',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -1490,6 +1492,7 @@ describe('ScriptTransformer', () => {
       sourcesContent: ['module.exports = "banana";'],
       mappings:
         ';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAeY;IAAAA,cAAA,YAAAA,CAAA;MAAA,OAAAC,cAAA;IAAA;EAAA;EAAA,OAAAA,cAAA;AAAA;AAAAD,cAAA;AAAAA,cAAA,GAAAE,CAAA;AAfZC,MAAM,CAACC,OAAO,GAAG,QAAQ',
+      ignoreList: [],
     };
     /* eslint-enable */
 
@@ -2059,6 +2062,67 @@ describe('ScriptTransformer', () => {
     expect(fs.readFileSync).toHaveBeenCalledWith('/fruits/banana.js', 'utf8');
   });
 
+  describe('canTransformSync', () => {
+    it('returns true when no transform is configured', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      expect(scriptTransformer.canTransformSync('/fruits/banana.js')).toBe(
+        true,
+      );
+    });
+
+    it('returns true for a sync transformer', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [['\\.js$', 'test_preprocessor', {}]],
+      });
+
+      expect(scriptTransformer.canTransformSync('/fruits/banana.js')).toBe(
+        true,
+      );
+    });
+
+    it('returns false for an async-only transformer', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [
+          ['\\.js$', 'skipped-required-props-preprocessor-only-async', {}],
+        ],
+      });
+
+      expect(scriptTransformer.canTransformSync('/fruits/banana.js')).toBe(
+        false,
+      );
+    });
+
+    it('returns true when transform is configured but no pattern matches the file', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [['\\.ts$', 'test_preprocessor', {}]],
+      });
+
+      expect(scriptTransformer.canTransformSync('/fruits/banana.js')).toBe(
+        true,
+      );
+    });
+
+    it('returns true for ignored paths even when an async transformer matches', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [
+          ['\\.js$', 'skipped-required-props-preprocessor-only-async', {}],
+        ],
+      });
+
+      expect(scriptTransformer.canTransformSync('/node_modules/react.js')).toBe(
+        true,
+      );
+    });
+  });
+
   it('preload transformer when using `createScriptTransformer`', async () => {
     const scriptTransformer = await createScriptTransformer({
       ...config,
@@ -2066,9 +2130,235 @@ describe('ScriptTransformer', () => {
     });
 
     // @ts-expect-error - private property
-    expect(Array.from(scriptTransformer._transformCache.entries())).toEqual([
+    expect([...scriptTransformer._transformCache.entries()]).toEqual([
       ['\\.js$test_preprocessor', expect.any(Object)],
     ]);
+  });
+
+  describe('caller support flags', () => {
+    const esmOptions = {...getCoverageOptions(), supportsStaticESM: true};
+    const cjsOptions = {...getCoverageOptions(), supportsStaticESM: false};
+
+    // The same file is transformed twice — as CJS and as ESM — and a transformer
+    // that reads the flag emits different code for each.
+    const configWithFlagReader = () => ({
+      ...config,
+      transform: [
+        ['\\.js$', 'passthrough-preprocessor', {}] as [string, string, unknown],
+      ],
+    });
+
+    beforeEach(() => {
+      jest
+        .mocked(
+          (require('passthrough-preprocessor') as SyncTransformer).process,
+        )
+        .mockImplementation((sourceText, sourcePath, options) => ({
+          code: options.supportsStaticESM
+            ? 'export default 1;'
+            : 'module.exports = 1;',
+        }));
+    });
+
+    it('separates the in-memory entries of one file transformed two ways', async () => {
+      const scriptTransformer = await createScriptTransformer(
+        configWithFlagReader(),
+      );
+
+      expect(
+        scriptTransformer.transform('/fruits/banana.js', cjsOptions).code,
+      ).toBe('module.exports = 1;');
+      expect(
+        scriptTransformer.transform('/fruits/banana.js', esmOptions).code,
+      ).toBe('export default 1;');
+    });
+
+    it('separates their cache files', async () => {
+      const scriptTransformer = await createScriptTransformer(
+        configWithFlagReader(),
+      );
+
+      scriptTransformer.transform('/fruits/banana.js', cjsOptions);
+      scriptTransformer.transform('/fruits/banana.js', esmOptions);
+
+      const written = jest
+        .mocked(writeFileAtomic.sync)
+        .mock.calls.map(([filePath]) => filePath);
+
+      expect(new Set(written).size).toBe(2);
+    });
+  });
+
+  (supportsTypeStripping ? describe : describe.skip)('type stripping', () => {
+    beforeEach(() => {
+      mockFs['/fruits/durian.ts'] =
+        'const weight: number = 3;\nmodule.exports = weight;';
+      mockFs['/fruits/durian.tsx'] = 'const node = <div />;';
+      mockFs['/fruits/lychee.ts'] =
+        'enum Size { Small }\nmodule.exports = Size;';
+      mockFs['/node_modules/papaya.ts'] = 'const weight: number = 4;';
+    });
+
+    it('erases types when no transformer claims the file', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      expect(
+        scriptTransformer.transform('/fruits/durian.ts', getCoverageOptions())
+          .code,
+      ).toBe('const weight         = 3;\nmodule.exports = weight;');
+    });
+
+    it('preserves positions rather than emitting a source map', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      const result = scriptTransformer.transform(
+        '/fruits/durian.ts',
+        getCoverageOptions(),
+      );
+
+      expect(result.sourceMapPath).toBeNull();
+      expect(result.code.split('\n')[0]).toHaveLength(
+        mockFs['/fruits/durian.ts'].split('\n')[0].length,
+      );
+    });
+
+    it('leaves `.tsx` alone, since strip-only cannot parse JSX', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      expect(
+        scriptTransformer.transform('/fruits/durian.tsx', getCoverageOptions())
+          .code,
+      ).toBe(mockFs['/fruits/durian.tsx']);
+    });
+
+    it('leaves the file alone when a transformer claims it', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [['\\.ts$', 'passthrough-preprocessor', {}]],
+      });
+      jest
+        .mocked(
+          (require('passthrough-preprocessor') as SyncTransformer).process,
+        )
+        .mockImplementation(sourceText => ({code: sourceText}));
+
+      expect(
+        scriptTransformer.transform('/fruits/durian.ts', getCoverageOptions())
+          .code,
+      ).toBe(mockFs['/fruits/durian.ts']);
+    });
+
+    it('honours `transformIgnorePatterns`, like Node refusing `node_modules`', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      expect(
+        scriptTransformer.transform(
+          '/node_modules/papaya.ts',
+          getCoverageOptions(),
+        ).code,
+      ).toBe(mockFs['/node_modules/papaya.ts']);
+    });
+
+    it('points at a real transformer for TypeScript that needs code generation', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+
+      expect(() =>
+        scriptTransformer.transform('/fruits/lychee.ts', getCoverageOptions()),
+      ).toThrow('@babel/preset-typescript');
+    });
+
+    it('keys the cache on the Node version, whose output is not stable', async () => {
+      const scriptTransformer = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+      const content = mockFs['/fruits/durian.ts'];
+      const options = getTransformOptions(false);
+
+      scriptTransformer.transformSource('/fruits/durian.ts', content, options);
+
+      const realVersion = process.version;
+      // `process.version` is read-only, so `jest.replaceProperty` cannot restore it.
+      Object.defineProperty(process, 'version', {
+        configurable: true,
+        value: 'v99.0.0',
+      });
+      try {
+        scriptTransformer.transformSource(
+          '/fruits/durian.ts',
+          content,
+          options,
+        );
+      } finally {
+        Object.defineProperty(process, 'version', {
+          configurable: true,
+          value: realVersion,
+        });
+      }
+
+      const written = jest
+        .mocked(writeFileAtomic.sync)
+        .mock.calls.map(([filePath]) => filePath);
+
+      expect(new Set(written).size).toBe(2);
+    });
+
+    it('keys the cache on whether types were stripped', async () => {
+      const content = mockFs['/fruits/durian.ts'];
+      const options = getTransformOptions(false);
+
+      const stripping = await createScriptTransformer({
+        ...config,
+        transform: [],
+      });
+      stripping.transformSource('/fruits/durian.ts', content, options);
+      const [[strippedPath]] = jest.mocked(writeFileAtomic.sync).mock.calls;
+
+      // Stand in for a Node version too old to strip types, which may well be
+      // reading the same cache directory.
+      jest.resetModules();
+      jest.doMock('../stripTypeScriptTypes', () => ({
+        ...jest.requireActual<typeof import('../stripTypeScriptTypes')>(
+          '../stripTypeScriptTypes',
+        ),
+        canStripTypes: () => false,
+      }));
+
+      try {
+        const passingThrough = await (
+          require('../ScriptTransformer') as typeof import('../ScriptTransformer')
+        ).createScriptTransformer({...config, transform: []});
+        passingThrough.transformSource('/fruits/durian.ts', content, options);
+
+        const written = jest
+          .mocked(
+            (require('write-file-atomic') as typeof import('write-file-atomic'))
+              .sync,
+          )
+          .mock.calls.map(([filePath]) => filePath);
+
+        // An empty list would mean it read the stripped file back out of the cache.
+        expect(written).toHaveLength(1);
+        expect(written[0]).not.toBe(strippedPath);
+      } finally {
+        jest.dontMock('../stripTypeScriptTypes');
+      }
+    });
   });
 });
 

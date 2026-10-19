@@ -344,17 +344,17 @@ Returns the `jest` object for chaining.
 
 :::tip
 
-Writing tests in TypeScript? Use the [`jest.Mocked`](MockFunctionAPI.md/#jestmockedsource) utility type or the [`jest.mocked()`](MockFunctionAPI.md/#jestmockedsource-options) helper method to have your mocked modules typed.
+Writing tests in TypeScript? Use the [`jest.Mocked`](MockFunctionAPI.md#jestmockedsource) utility type or the [`jest.mocked()`](MockFunctionAPI.md#jestmockedsource-options) helper method to have your mocked modules typed.
 
 :::
 
 ### `jest.Mocked<Source>`
 
-See [TypeScript Usage](MockFunctionAPI.md/#jestmockedsource) chapter of Mock Functions page for documentation.
+See [TypeScript Usage](MockFunctionAPI.md#jestmockedsource) chapter of Mock Functions page for documentation.
 
 ### `jest.mocked(source, options?)`
 
-See [TypeScript Usage](MockFunctionAPI.md/#jestmockedsource-options) chapter of Mock Functions page for documentation.
+See [TypeScript Usage](MockFunctionAPI.md#jestmockedsource-options) chapter of Mock Functions page for documentation.
 
 ### `jest.unmock(moduleName)`
 
@@ -528,6 +528,51 @@ getRandom(); // Always returns 10
 
 Returns a mock module instead of the actual module, bypassing all checks on whether the module should be required normally or not.
 
+### `jest.onGenerateMock(cb)`
+
+Registers a callback function that is invoked whenever Jest generates a mock for a module. This callback allows you to modify the mock before it is returned to the rest of your tests.
+
+Parameters for callback:
+
+1. `modulePath: string` - The absolute path to the module that is being mocked.
+2. `moduleMock: T` - The mock object that Jest has generated for the module. This object can be modified or replaced before returning.
+
+Behaviour:
+
+- If multiple callbacks are registered via consecutive `onGenerateMock` calls, they will be invoked **in the order they were added**.
+- Each callback receives the output of the previous callback as its `moduleMock`. This makes it possible to apply multiple layers of transformations to the same mock.
+
+```js
+jest.onGenerateMock((modulePath, moduleMock) => {
+  // Inspect the module name and decide how to transform the mock
+  if (modulePath.includes('Database')) {
+    // For demonstration, let's replace a method with our own custom mock
+    moduleMock.connect = jest.fn().mockImplementation(() => {
+      console.log('Connected to mock DB');
+    });
+  }
+
+  // Return the (potentially modified) mock
+  return moduleMock;
+});
+
+// Apply mock for module
+jest.mock('./Database');
+
+// Later in your tests
+import Database from './Database';
+// The `Database` mock now has any transformations applied by our callback
+```
+
+:::note
+
+The `onGenerateMock` callback is not called for manually created mocks, such as:
+
+- Mocks defined in a `__mocks__` folder
+- Explicit factories provided via `jest.mock('moduleName', () => { ... })`
+
+:::
+
 ### `jest.resetModules()`
 
 Resets the module registry - the cache of all required modules. This is useful to isolate modules where local state might conflict between tests.
@@ -669,7 +714,7 @@ Creates a mock function similar to `jest.fn` but also tracks calls to `object[me
 
 :::note
 
-By default, `jest.spyOn` also calls the **spied** method. This is different behavior from most other test libraries. If you want to overwrite the original function, you can use `jest.spyOn(object, methodName).mockImplementation(() => customImplementation)` or `jest.replaceProperty(object, methodName, jest.fn(() => customImplementation));`
+By default, `jest.spyOn` also calls the **spied** method. This is different behavior from most other test libraries. If you want to overwrite the original function, you can use `jest.spyOn(object, methodName).mockImplementation(() => customImplementation)` or `object[methodName] = jest.fn(() => customImplementation)`.
 
 :::
 
@@ -709,6 +754,64 @@ test('plays video', () => {
   expect(isPlaying).toBe(true);
 });
 ```
+
+#### Spied methods and the `using` keyword
+
+If your codebase is set up to transpile the ["explicit resource management"](https://github.com/tc39/proposal-explicit-resource-management) (e.g. if you are using TypeScript >= 5.2 or the `@babel/plugin-proposal-explicit-resource-management` plugin), you can use `spyOn` in combination with the `using` keyword:
+
+```js
+test('logs a warning', () => {
+  using spy = jest.spyOn(console, 'warn');
+  doSomeThingWarnWorthy();
+  expect(spy).toHaveBeenCalled();
+});
+```
+
+That code is semantically equal to
+
+```js
+test('logs a warning', () => {
+  let spy;
+  try {
+    spy = jest.spyOn(console, 'warn');
+    doSomeThingWarnWorthy();
+    expect(spy).toHaveBeenCalled();
+  } finally {
+    spy.mockRestore();
+  }
+});
+```
+
+That way, your spy will automatically be restored to the original value once the current code block is left.
+
+You can even go a step further and use a code block to restrict your mock to only a part of your test without hurting readability.
+
+```js
+test('testing something', () => {
+  {
+    using spy = jest.spyOn(console, 'warn');
+    setupStepThatWillLogAWarning();
+  }
+  // here, console.warn is already restored to the original value
+  // your test can now continue normally
+});
+```
+
+:::note
+
+If you get a warning that `Symbol.dispose` does not exist, you might need to polyfill that, e.g. with this code:
+
+```js
+if (!Symbol.dispose) {
+  Object.defineProperty(Symbol, 'dispose', {
+    get() {
+      return Symbol.for('nodejs.dispose');
+    },
+  });
+}
+```
+
+:::
 
 ### `jest.spyOn(object, methodName, accessType?)`
 
@@ -753,7 +856,7 @@ afterEach(() => {
 
 test('plays video', () => {
   const spy = jest.spyOn(video, 'play', 'get'); // we pass 'get'
-  const isPlaying = video.play();
+  const isPlaying = video.play;
 
   expect(spy).toHaveBeenCalled();
   expect(isPlaying).toBe(true);
@@ -820,7 +923,8 @@ type FakeableAPI =
   | 'setInterval'
   | 'clearInterval'
   | 'setTimeout'
-  | 'clearTimeout';
+  | 'clearTimeout'
+  | 'Temporal';
 
 type FakeTimersConfig = {
   /**
@@ -839,8 +943,12 @@ type FakeTimersConfig = {
    * The default is `false`.
    */
   legacyFakeTimers?: boolean;
-  /** Sets current system time to be used by fake timers. The default is `Date.now()`. */
-  now?: number | Date;
+  /**
+   * Sets current system time to be used by fake timers. Accepts a millisecond
+   * timestamp, a `Date`, a `Temporal.Instant`, or a `Temporal.ZonedDateTime`.
+   * The default is `Date.now()`.
+   */
+  now?: number | Date | Temporal.Instant | Temporal.ZonedDateTime;
   /**
    * The maximum number of recursive timers that will be run when calling `jest.runAllTimers()`.
    * The default is `100_000` timers.
@@ -947,6 +1055,8 @@ Executes only the macro task queue (i.e. all tasks queued by `setTimeout()` or `
 
 When this API is called, all timers are advanced by `msToRun` milliseconds. All pending "macro-tasks" that have been queued via `setTimeout()` or `setInterval()`, and would be executed within this time frame will be executed. Additionally, if those macro-tasks schedule new macro-tasks that would be executed within the same time frame, those will be executed until there are no more macro-tasks remaining in the queue, that should be run within `msToRun` milliseconds.
 
+`msToRun` also accepts a `Temporal.Duration`. Calendar units (`years`, `months`, `weeks`) are not supported and will throw — use time-based units (`days`, `hours`, `minutes`, `seconds`, `milliseconds`) instead.
+
 ### `jest.advanceTimersByTimeAsync(msToRun)`
 
 Asynchronous equivalent of `jest.advanceTimersByTime(msToRun)`. It allows any scheduled promise callbacks to execute _before_ running the timers.
@@ -989,6 +1099,16 @@ This function is not available when using legacy fake timers implementation.
 
 :::
 
+### `jest.advanceTimersToNextFrame()`
+
+Advances all timers by the needed milliseconds to execute callbacks currently scheduled with `requestAnimationFrame`. `advanceTimersToNextFrame()` is a helpful way to execute code that is scheduled using `requestAnimationFrame`.
+
+:::info
+
+This function is not available when using legacy fake timers implementation.
+
+:::
+
 ### `jest.clearAllTimers()`
 
 Removes any pending timers from the timer system.
@@ -1003,9 +1123,32 @@ Returns the number of fake timers still left to run.
 
 Returns the time in ms of the current clock. This is equivalent to `Date.now()` if real timers are in use, or if `Date` is mocked. In other cases (such as legacy timers) it may be useful for implementing custom mocks of `Date.now()`, `performance.now()`, etc.
 
-### `jest.setSystemTime(now?: number | Date)`
+### `jest.setSystemTime(now?: number | Date | Temporal.Instant | Temporal.ZonedDateTime)`
 
 Set the current system time used by fake timers. Simulates a user changing the system clock while your program is running. It affects the current time but it does not in itself cause e.g. timers to fire; they will fire exactly as they would have done without the call to `jest.setSystemTime()`.
+
+When `'Temporal'` is faked (see `useFakeTimers`), `Temporal.Now.*` methods (`instant()`, `zonedDateTimeISO()`, `plainDateTimeISO()`, etc.) are driven by the fake clock. `Temporal.Now.timeZoneId()` is not faked.
+
+:::info
+
+This function is not available when using legacy fake timers implementation.
+
+:::
+
+### `jest.setTimerTickMode(mode)`
+
+Allows configuring how fake timers advance time.
+
+Configuration options:
+
+```ts
+type TimerTickMode =
+  {mode: 'manual'} | {mode: 'nextAsync'} | {mode: 'interval'; delta?: number};
+```
+
+- `manual`: Timers do not advance without explicit, manual calls to the tick APIs (`jest.advanceTimersByTime(ms)`, `jest.runAllTimers()`, etc).
+- `nextAsync`: The clock will continuously break the event loop, then run the next timer until the mode changes.
+- `interval`: This is the same as specifying `advanceTimers: true` with an `advanceTimeDelta`. If the delta is not specified, 20 will be used by default.
 
 :::info
 
@@ -1061,6 +1204,62 @@ test('will fail', () => {
 });
 ```
 
+`waitBeforeRetry` is the number of milliseconds to wait before retrying.
+
+```js
+jest.retryTimes(3, {waitBeforeRetry: 1000});
+
+test('will fail', () => {
+  expect(true).toBe(false);
+});
+```
+
+`retryImmediately` option is used to retry the failed test immediately after the failure. If this option is not specified, the tests are retried after Jest is finished running all other tests in the file.
+
+```js
+jest.retryTimes(3, {retryImmediately: true});
+
+test('will fail', () => {
+  expect(true).toBe(false);
+});
+```
+
+`entireDescribe` retries all tests and hooks in the `describe` block where `jest.retryTimes()` is called. When called at the top level, it retries the root `describe` block for the test file. While a describe retry is active, per-test retries are not applied within its subtree.
+
+```js
+describe('workflow', () => {
+  jest.retryTimes(3, {entireDescribe: true});
+
+  beforeAll(() => {
+    // Runs again before each retry.
+  });
+
+  test('first step', () => {
+    // Passing tests run again with the rest of the block.
+  });
+
+  test('second step', () => {
+    // A failure retries the entire block.
+  });
+
+  afterAll(() => {
+    // Runs after every attempt.
+  });
+});
+```
+
+Each attempt runs the block's `beforeAll` hooks, child tests and nested describes, and `afterAll` hooks. When a retryable test or hook failure is recorded, passing tests run again with the rest of the block. If `entireDescribe` is omitted or `false`, `jest.retryTimes()` keeps its existing per-test behavior.
+
+Nested describe retry settings compose from the innermost block outwards. Each time an ancestor starts a new attempt, its descendant retry budgets start again. The maximum number of times a test can run from nested describe retries is therefore the product of `(numRetries + 1)` for each configured block. A block configured with zero describe retries still defines a retry boundary and disables per-test retries in its subtree.
+
+`afterAll` hooks still run after every attempt, but failures from `afterAll` and process-level errors do not trigger a describe retry. If either occurs during an attempt, no further attempts run, even if another failure would otherwise be retried, and all errors remain reported.
+
+Unhandled rejections owned by a test, `beforeAll`, `beforeEach`, or `afterEach` participate in describe retries. Ownerless rejections remain reported, while `afterAll` failures remain non-retryable.
+
+When test randomization is enabled, each describe block keeps the order selected for its first attempt across all of its retries.
+
+`retryImmediately` only applies to ordinary per-test retries. A describe retry always finishes the complete current attempt before starting the next one.
+
 Returns the `jest` object for chaining.
 
 :::caution
@@ -1071,7 +1270,7 @@ Returns the `jest` object for chaining.
 
 :::info
 
-This function is only available with the default [jest-circus](https://github.com/facebook/jest/tree/main/packages/jest-circus) runner.
+This function is only available with the default [jest-circus](https://github.com/jestjs/jest/tree/main/packages/jest-circus) runner.
 
 :::
 

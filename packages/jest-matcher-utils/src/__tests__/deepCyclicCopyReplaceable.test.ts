@@ -6,7 +6,9 @@
  *
  */
 
-import deepCyclicCopyReplaceable from '../deepCyclicCopyReplaceable';
+import deepCyclicCopyReplaceable, {
+  SERIALIZABLE_PROPERTIES,
+} from '../deepCyclicCopyReplaceable';
 
 test('returns the same value for primitive or function values', () => {
   const fn = () => {};
@@ -15,7 +17,7 @@ test('returns the same value for primitive or function values', () => {
   expect(deepCyclicCopyReplaceable(null)).toBeNull();
   expect(deepCyclicCopyReplaceable(true)).toBe(true);
   expect(deepCyclicCopyReplaceable(42)).toBe(42);
-  expect(Number.isNaN(deepCyclicCopyReplaceable(NaN))).toBe(true);
+  expect(Number.isNaN(deepCyclicCopyReplaceable(Number.NaN))).toBe(true);
   expect(deepCyclicCopyReplaceable('foo')).toBe('foo');
   expect(deepCyclicCopyReplaceable(fn)).toBe(fn);
 });
@@ -150,4 +152,109 @@ test('should set writable, configurable to true', () => {
   expect(Object.getOwnPropertyDescriptors(copied)).toEqual({
     key: {configurable: true, enumerable: true, value: 1, writable: true},
   });
+});
+
+test('should only copy the properties mapped to be serializable', () => {
+  class Foo {
+    foo = 'foo';
+    bar = ['bar'];
+    get baz() {
+      throw new Error('should not call getter');
+    }
+  }
+
+  // @ts-expect-error: Testing purpose
+  Foo.prototype[SERIALIZABLE_PROPERTIES] = ['foo', 'bar'];
+
+  const obj = new Foo();
+
+  const copied = deepCyclicCopyReplaceable(obj);
+  expect(Object.getOwnPropertyDescriptors(copied)).toEqual({
+    bar: {configurable: true, enumerable: true, value: ['bar'], writable: true},
+    foo: {configurable: true, enumerable: true, value: 'foo', writable: true},
+  });
+});
+
+test('json from Response', async () => {
+  // eslint-disable-next-line unicorn/prefer-response-static-json
+  const response = () => new Response(JSON.stringify({}));
+
+  const text = JSON.parse(await response().text());
+  deepCyclicCopyReplaceable(text);
+
+  const json = await response().json();
+  deepCyclicCopyReplaceable(json);
+});
+
+test('handles self-referential getters without infinite recursion', () => {
+  class TestClass {
+    constructor(public value: string) {}
+
+    get selfRef() {
+      return new TestClass(this.value.toLowerCase());
+    }
+  }
+
+  const obj = new TestClass('HELLO');
+  const copy = deepCyclicCopyReplaceable(obj);
+
+  expect(copy.value).toBe('HELLO');
+  expect(copy.selfRef).toBe('[Getter]');
+});
+
+test('handles getters returning different class instances', () => {
+  class OtherClass {
+    constructor(public value: string) {}
+  }
+
+  class WithGetter {
+    constructor(public value: string) {}
+
+    get other() {
+      return new OtherClass(this.value.toLowerCase());
+    }
+  }
+
+  const obj = new WithGetter('HELLO');
+  const copy = deepCyclicCopyReplaceable(obj);
+
+  expect(copy.value).toBe('HELLO');
+  expect(copy.other).toEqual({value: 'hello'});
+  expect(copy.other.constructor).toBe(OtherClass);
+});
+
+test('handles nested objects with self-referential getters', () => {
+  class InnerClass {
+    constructor(public value: string) {}
+
+    get self() {
+      return new InnerClass(`${this.value}_self`);
+    }
+  }
+
+  class OuterClass {
+    constructor(public inner: InnerClass) {}
+  }
+
+  const obj = new OuterClass(new InnerClass('test'));
+  const copy = deepCyclicCopyReplaceable(obj);
+
+  expect(copy.inner.value).toBe('test');
+  expect(copy.inner.self).toBe('[Getter]');
+});
+
+test('handles getters returning primitive values', () => {
+  class TestClass {
+    constructor(public value: string) {}
+
+    get upperCase() {
+      return this.value.toUpperCase();
+    }
+  }
+
+  const obj = new TestClass('hello');
+  const copy = deepCyclicCopyReplaceable(obj);
+
+  expect(copy.value).toBe('hello');
+  expect(copy.upperCase).toBe('HELLO');
 });

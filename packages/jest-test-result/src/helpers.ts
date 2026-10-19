@@ -5,7 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {AggregatedResult, SerializableError, TestResult} from './types';
+import type {
+  AggregatedResult,
+  AssertionResult,
+  SerializableError,
+  TestResult,
+} from './types';
 
 export const makeEmptyAggregatedTestResult = (): AggregatedResult => ({
   numFailedTestSuites: 0,
@@ -57,7 +62,13 @@ export const buildFailureTestResult = (
   openHandles: [],
   perfStats: {
     end: 0,
+    loadTestEnvironmentEnd: 0,
+    loadTestEnvironmentStart: 0,
     runtime: 0,
+    setupAfterEnvEnd: 0,
+    setupAfterEnvStart: 0,
+    setupFilesEnd: 0,
+    setupFilesStart: 0,
     slow: false,
     start: 0,
   },
@@ -155,7 +166,13 @@ export const createEmptyTestResult = (): TestResult => ({
   openHandles: [],
   perfStats: {
     end: 0,
+    loadTestEnvironmentEnd: 0,
+    loadTestEnvironmentStart: 0,
     runtime: 0,
+    setupAfterEnvEnd: 0,
+    setupAfterEnvStart: 0,
+    setupFilesEnd: 0,
+    setupFilesStart: 0,
     slow: false,
     start: 0,
   },
@@ -172,3 +189,35 @@ export const createEmptyTestResult = (): TestResult => ({
   testFilePath: '',
   testResults: [],
 });
+
+// Build a single-file `TestResult` from already-resolved assertion results,
+// tallying the per-status counts. Used by the test runners' `--collect-tests`
+// paths, where test bodies are not executed but per-status counts must still
+// match what an actual run would report.
+export const makeCollectedTestResult = (
+  testResults: Array<AssertionResult>,
+  {
+    displayName,
+    testFilePath,
+  }: {displayName: TestResult['displayName']; testFilePath: string},
+): TestResult => {
+  const count = (status: AssertionResult['status']) =>
+    testResults.filter(result => result.status === status).length;
+  const numFailingTests = count('failed');
+  const numPassingTests = count('passed');
+  const numTodoTests = count('todo');
+
+  return {
+    ...createEmptyTestResult(),
+    displayName,
+    numFailingTests,
+    numPassingTests,
+    // Anything that is neither passing, failing, nor todo (i.e. pending) counts
+    // as pending.
+    numPendingTests:
+      testResults.length - numFailingTests - numPassingTests - numTodoTests,
+    numTodoTests,
+    testFilePath,
+    testResults,
+  };
+};

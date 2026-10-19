@@ -5,19 +5,32 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {AssertionError, strict as assert} from 'assert';
-import {Console} from 'console';
-import {InspectOptions, format, formatWithOptions, inspect} from 'util';
-import chalk = require('chalk');
-import {clearLine, formatTime} from 'jest-util';
-import type {LogCounters, LogMessage, LogTimers, LogType} from './types';
+import {AssertionError, strict as assert} from 'node:assert';
+import {Console} from 'node:console';
+import type {WriteStream} from 'node:tty';
+import {
+  type InspectOptions,
+  format,
+  formatWithOptions,
+  inspect,
+} from 'node:util';
+import chalk from 'chalk';
+import {ErrorWithStack, clearLine, formatTime, invariant} from 'jest-util';
+import type {
+  ConsoleBuffer,
+  LogCounters,
+  LogMessage,
+  LogTimers,
+  LogType,
+} from './types';
 
 type Formatter = (type: LogType, message: LogMessage) => string;
 
 export default class CustomConsole extends Console {
-  private readonly _stdout: NodeJS.WriteStream;
-  private readonly _stderr: NodeJS.WriteStream;
+  private readonly _stdout: WriteStream;
+  private readonly _stderr: WriteStream;
   private readonly _formatBuffer: Formatter;
+  private readonly _buffer: ConsoleBuffer = [];
   private _counters: LogCounters = {};
   private _timers: LogTimers = {};
   private _groupDepth = 0;
@@ -25,8 +38,8 @@ export default class CustomConsole extends Console {
   override Console: typeof Console = Console;
 
   constructor(
-    stdout: NodeJS.WriteStream,
-    stderr: NodeJS.WriteStream,
+    stdout: WriteStream,
+    stderr: WriteStream,
     formatBuffer: Formatter = (_type, message) => message,
   ) {
     super(stdout, stderr);
@@ -40,6 +53,7 @@ export default class CustomConsole extends Console {
     super.log(
       this._formatBuffer(type, '  '.repeat(this._groupDepth) + message),
     );
+    this._addToBuffer(type, message);
   }
 
   private _logError(type: LogType, message: string) {
@@ -47,17 +61,32 @@ export default class CustomConsole extends Console {
     super.error(
       this._formatBuffer(type, '  '.repeat(this._groupDepth) + message),
     );
+    this._addToBuffer(type, message);
   }
+
+  private readonly _addToBuffer = (type: LogType, message: string) => {
+    const rawStack = new ErrorWithStack(undefined, this._addToBuffer).stack;
+
+    invariant(rawStack != null, 'always have a stack trace');
+
+    const origin = rawStack.split('\n').slice(3).filter(Boolean).join('\n');
+
+    this._buffer.push({
+      message: '  '.repeat(this._groupDepth) + message,
+      origin,
+      type,
+    });
+  };
 
   override assert(value: unknown, message?: string | Error): asserts value {
     try {
-      assert(value, message);
+      assert.ok(value, message);
     } catch (error) {
       if (!(error instanceof AssertionError)) {
         throw error;
       }
-      // https://github.com/facebook/jest/pull/13422#issuecomment-1273396392
-      this._logError('assert', error.toString().replace(/:\n\n.*\n/gs, ''));
+      // https://github.com/jestjs/jest/pull/13422#issuecomment-1273396392
+      this._logError('assert', error.toString().replaceAll(/:\n\n.*\n/gs, ''));
     }
   }
 
@@ -132,7 +161,7 @@ export default class CustomConsole extends Console {
     const startTime = this._timers[label];
 
     if (startTime != null) {
-      const endTime = new Date().getTime();
+      const endTime = Date.now();
       const time = endTime - startTime.getTime();
       this._log('time', format(`${label}: ${formatTime(time)}`));
       delete this._timers[label];
@@ -153,7 +182,7 @@ export default class CustomConsole extends Console {
     this._logError('warn', format(firstArg, ...args));
   }
 
-  getBuffer(): undefined {
-    return undefined;
+  getBuffer(): ConsoleBuffer | undefined {
+    return this._buffer.length > 0 ? this._buffer : undefined;
   }
 }

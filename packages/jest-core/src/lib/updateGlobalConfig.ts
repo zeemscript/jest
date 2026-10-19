@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import {TestPathPatterns} from '@jest/pattern';
 import type {Config} from '@jest/types';
-import {replacePathSepForRegex} from 'jest-regex-util';
 import type {AllowedConfigOptions} from 'jest-watcher';
 
 type ExtraConfigOptions = Partial<
@@ -31,15 +31,14 @@ export default function updateGlobalConfig(
     newConfig.testNamePattern = options.testNamePattern || '';
   }
 
-  if (options.testPathPattern !== undefined) {
-    newConfig.testPathPattern =
-      replacePathSepForRegex(options.testPathPattern) || '';
+  if (options.testPathPatterns !== undefined) {
+    newConfig.testPathPatterns = new TestPathPatterns(options.testPathPatterns);
   }
 
   newConfig.onlyChanged =
     !newConfig.watchAll &&
     !newConfig.testNamePattern &&
-    !newConfig.testPathPattern;
+    !newConfig.testPathPatterns.isSet();
 
   if (typeof options.bail === 'boolean') {
     newConfig.bail = options.bail ? 1 : 0;

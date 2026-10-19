@@ -5,15 +5,69 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {dirname, resolve} from 'path';
+import {dirname, resolve} from 'node:path';
 import * as fs from 'graceful-fs';
+import type {ResolverFactory} from 'unrs-resolver';
 import {tryRealpath} from 'jest-util';
 import type {PackageJSON} from './types';
 
+// One factory per resolve-options shape (~2 per run: cjs/esm conditions).
+// Creating a factory is a ~5µs NAPI construction, so reuse beats a
+// clone-per-resolution; clones share one underlying fs cache.
+const unrsResolvers = new Map<string, ResolverFactory>();
+
+export function getResolver(key: string): ResolverFactory | undefined {
+  return unrsResolvers.get(key);
+}
+
+export function getAnyResolver(): ResolverFactory | undefined {
+  const [firstResolver] = unrsResolvers.values();
+  return firstResolver;
+}
+
+export function setResolver(key: string, resolver: ResolverFactory): void {
+  unrsResolvers.set(key, resolver);
+}
+
 export function clearFsCache(): void {
+  // The factories share one underlying cache, but clearing each keeps this
+  // correct if that ever changes.
+  for (const resolver of unrsResolvers.values()) {
+    resolver.clearCache();
+  }
+  unrsResolvers.clear();
+  preserveSymlinks = undefined;
   checkedPaths.clear();
   checkedRealpathPaths.clear();
   packageContents.clear();
+}
+
+let preserveSymlinks: boolean | undefined;
+
+/**
+ * Whether Node was started with `--preserve-symlinks` / `NODE_PRESERVE_SYMLINKS`.
+ *
+ * @see https://nodejs.org/api/cli.html#--preserve-symlinks
+ */
+export function shouldPreserveSymlinks(): boolean {
+  preserveSymlinks ??= detectPreserveSymlinks();
+  return preserveSymlinks;
+}
+
+function detectPreserveSymlinks(): boolean {
+  // on only when exactly `1`
+  if (process.env.NODE_PRESERVE_SYMLINKS === '1') {
+    return true;
+  }
+
+  // matched exactly so `--preserve-symlinks-main` (entry point only) is excluded
+  if (process.execArgv.includes('--preserve-symlinks')) {
+    return true;
+  }
+
+  return (process.env.NODE_OPTIONS ?? '')
+    .split(/\s+/)
+    .includes('--preserve-symlinks');
 }
 
 enum IPathType {
@@ -30,11 +84,10 @@ function statSyncCached(path: string): IPathType {
 
   let stat;
   try {
-    // @ts-expect-error TS2554 - throwIfNoEntry is only available in recent version of node, but inclusion of the option is a backward compatible no-op.
     stat = fs.statSync(path, {throwIfNoEntry: false});
-  } catch (e: any) {
-    if (!(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR'))) {
-      throw e;
+  } catch (error: any) {
+    if (!(error && (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
+      throw error;
     }
   }
 

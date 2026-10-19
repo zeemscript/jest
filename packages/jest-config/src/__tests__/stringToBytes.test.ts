@@ -8,6 +8,10 @@
 import stringToBytes from '../stringToBytes';
 
 describe('numeric input', () => {
+  test('0 should be 0', () => {
+    expect(stringToBytes(0)).toBe(0);
+  });
+
   test('> 1 represents bytes', () => {
     expect(stringToBytes(50.8)).toBe(50);
   });
@@ -33,6 +37,10 @@ describe('numeric input', () => {
 
 describe('string input', () => {
   describe('numeric passthrough', () => {
+    test('0 should be 0', () => {
+      expect(stringToBytes('0')).toBe(0);
+    });
+
     test('> 1 represents bytes', () => {
       expect(stringToBytes('50.8')).toBe(50);
     });
@@ -55,10 +63,8 @@ describe('string input', () => {
   });
 
   describe('parsing', () => {
-    test('0% should throw an error', () => {
-      expect(() => stringToBytes('0%', 51)).toThrow(
-        'Unexpected numerical input',
-      );
+    test('0%', () => {
+      expect(stringToBytes('0%', 51)).toBe(0);
     });
 
     test('30%', () => {
@@ -76,43 +82,43 @@ describe('string input', () => {
     // The units caps is intentionally janky to test for forgiving string parsing.
     describe('k', () => {
       test('30k', () => {
-        expect(stringToBytes('30K')).toBe(30000);
+        expect(stringToBytes('30K')).toBe(30_000);
       });
 
       test('30KB', () => {
-        expect(stringToBytes('30kB')).toBe(30000);
+        expect(stringToBytes('30kB')).toBe(30_000);
       });
 
       test('30KiB', () => {
-        expect(stringToBytes('30kIb')).toBe(30720);
+        expect(stringToBytes('30kIb')).toBe(30_720);
       });
     });
 
     describe('m', () => {
       test('30M', () => {
-        expect(stringToBytes('30M')).toBe(30000000);
+        expect(stringToBytes('30M')).toBe(30_000_000);
       });
 
       test('30MB', () => {
-        expect(stringToBytes('30MB')).toBe(30000000);
+        expect(stringToBytes('30MB')).toBe(30_000_000);
       });
 
       test('30MiB', () => {
-        expect(stringToBytes('30MiB')).toBe(31457280);
+        expect(stringToBytes('30MiB')).toBe(31_457_280);
       });
     });
 
     describe('g', () => {
       test('30G', () => {
-        expect(stringToBytes('30G')).toBe(30000000000);
+        expect(stringToBytes('30G')).toBe(30_000_000_000);
       });
 
       test('30GB', () => {
-        expect(stringToBytes('30gB')).toBe(30000000000);
+        expect(stringToBytes('30gB')).toBe(30_000_000_000);
       });
 
       test('30GiB', () => {
-        expect(stringToBytes('30GIB')).toBe(32212254720);
+        expect(stringToBytes('30GIB')).toBe(32_212_254_720);
       });
     });
 

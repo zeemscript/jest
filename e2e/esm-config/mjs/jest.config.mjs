@@ -5,7 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+const displayName = await Promise.resolve('Config from mjs file');
+
 export default {
-  displayName: 'Config from mjs file',
+  displayName,
   testEnvironment: 'node',
+  testEnvironmentOptions: {
+    globalsCleanup: 'on',
+  },
 };

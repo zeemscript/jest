@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {AggregatedResult, Test, TestCaseResult} from '@jest/test-result';
 import {formatTime, pluralize} from 'jest-util';
 import type {SummaryOptions} from './types';
@@ -20,7 +20,7 @@ function getValuesCurrentTestCases(
   let numPendingTests = 0;
   let numTodoTests = 0;
   let numTotalTests = 0;
-  currentTestCases.forEach(testCase => {
+  for (const testCase of currentTestCases) {
     switch (testCase.testCaseResult.status) {
       case 'failed': {
         numFailingTests++;
@@ -40,7 +40,7 @@ function getValuesCurrentTestCases(
       }
     }
     numTotalTests++;
-  });
+  }
 
   return {
     numFailingTests,
@@ -131,7 +131,7 @@ export default function getSummary(
       ? `${chalk.bold.yellow(`${suitesPending} skipped`)}, `
       : '') +
     (suitesPassed ? `${chalk.bold.green(`${suitesPassed} passed`)}, ` : '') +
-    (suitesRun !== suitesTotal ? `${suitesRun} of ${suitesTotal}` : suitesTotal)
+    (suitesRun === suitesTotal ? suitesTotal : `${suitesRun} of ${suitesTotal}`)
   } total`;
 
   const updatedTestsFailed =

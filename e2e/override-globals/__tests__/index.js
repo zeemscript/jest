@@ -21,10 +21,17 @@ describe('parent', () => {
         try {
           expect(() => new Promise()).toThrow('Booo');
           done();
-        } catch (e) {
-          done.fail(e);
+        } catch (error) {
+          done.fail(error);
         }
       }, 10);
     });
+  });
+
+  it('can override atob and btoa', () => {
+    globalThis.atob = () => 'hello';
+    globalThis.btoa = () => 'there';
+
+    expect(`${atob()} ${btoa()}`).toBe('hello there');
   });
 });

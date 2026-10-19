@@ -14,9 +14,7 @@ import type {
 } from './types';
 
 type AvailableHooks =
-  | 'onFileChange'
-  | 'onTestRunComplete'
-  | 'shouldRunTestSuite';
+  'onFileChange' | 'onTestRunComplete' | 'shouldRunTestSuite';
 
 class JestHooks {
   private readonly _listeners: {
@@ -48,12 +46,13 @@ class JestHooks {
     };
 
     this._emitter = {
-      onFileChange: fs =>
-        this._listeners.onFileChange.forEach(listener => listener(fs)),
-      onTestRunComplete: results =>
-        this._listeners.onTestRunComplete.forEach(listener =>
-          listener(results),
-        ),
+      onFileChange: fs => {
+        for (const listener of this._listeners.onFileChange) listener(fs);
+      },
+      onTestRunComplete: results => {
+        for (const listener of this._listeners.onTestRunComplete)
+          listener(results);
+      },
       shouldRunTestSuite: async testSuiteInfo => {
         const result = await Promise.all(
           this._listeners.shouldRunTestSuite.map(listener =>

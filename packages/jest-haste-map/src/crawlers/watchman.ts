@@ -5,11 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import watchman = require('fb-watchman');
+import * as path from 'node:path';
+import * as watchman from 'fb-watchman';
 import H from '../constants';
 import * as fastPath from '../lib/fast_path';
 import normalizePathSep from '../lib/normalizePathSep';
+import {connectClientToSockname} from '../lib/watchmanSockname';
 import type {
   CrawlerOptions,
   FileData,
@@ -56,7 +57,7 @@ type WatchmanQueryResponse = {
 
 const watchmanURL = 'https://facebook.github.io/watchman/docs/troubleshooting';
 
-function WatchmanError(error: Error): Error {
+function watchmanError(error: Error): Error {
   error.message =
     `Watchman error: ${error.message.trim()}. Make sure watchman ` +
     `is running for this project. See ${watchmanURL}.`;
@@ -95,50 +96,30 @@ export async function watchmanCrawl(options: CrawlerOptions): Promise<{
   hasteMap: InternalHasteMap;
 }> {
   const fields = ['name', 'exists', 'mtime_ms', 'size'];
-  const {data, extensions, ignore, rootDir, roots} = options;
+  const {console, data, extensions, ignore, rootDir, roots} = options;
   const defaultWatchExpression: Array<any> = ['allof', ['type', 'f']];
   const clocks = data.clocks;
   const client = new watchman.Client();
 
-  // https://facebook.github.io/watchman/docs/capabilities.html
-  // Check adds about ~28ms
-  const capabilities = await capabilityCheck(client, {
-    // If a required capability is missing then an error will be thrown,
-    // we don't need this assertion, so using optional instead.
-    optional: ['suffix-set'],
-  });
-
-  if (capabilities?.capabilities['suffix-set']) {
-    // If available, use the optimized `suffix-set` operation:
-    // https://facebook.github.io/watchman/docs/expr/suffix.html#suffix-set
-    defaultWatchExpression.push(['suffix', extensions]);
-  } else {
-    // Otherwise use the older and less optimal suffix tuple array
-    defaultWatchExpression.push([
-      'anyof',
-      ...extensions.map(extension => ['suffix', extension]),
-    ]);
-  }
-
+  // fb-watchman reports connection and daemon-startup failures as a client
+  // `error` event rather than through a command callback. Without a listener
+  // already attached, the first such failure is an unhandled `error` that
+  // takes the process down instead of letting the caller retry with the node
+  // crawler, so subscribe before issuing any command.
   let clientError;
-  client.on('error', error => (clientError = WatchmanError(error)));
+  client.on('error', error => (clientError = watchmanError(error)));
+
+  if (options.watchmanSockname !== undefined) {
+    connectClientToSockname(client, options.watchmanSockname);
+  }
 
   const cmd = <T>(...args: Array<any>): Promise<T> =>
     new Promise((resolve, reject) =>
+      // @ts-expect-error: client is typed strictly, but incomplete
       client.command(args, (error, result) =>
-        error ? reject(WatchmanError(error)) : resolve(result),
+        error ? reject(watchmanError(error)) : resolve(result),
       ),
     );
-
-  if (options.computeSha1) {
-    const {capabilities} = await cmd<WatchmanListCapabilitiesResponse>(
-      'list-capabilities',
-    );
-
-    if (capabilities.indexOf('field-content.sha1hex') !== -1) {
-      fields.push('content.sha1hex');
-    }
-  }
 
   async function getWatchmanRoots(
     roots: Array<string>,
@@ -157,10 +138,10 @@ export async function watchmanCrawl(options: CrawlerOptions): Promise<{
 
         if (canBeFiltered) {
           if (response.relative_path) {
-            watchmanRoots.set(
-              response.watch,
-              (existing || []).concat(response.relative_path),
-            );
+            watchmanRoots.set(response.watch, [
+              ...(existing || []),
+              response.relative_path,
+            ]);
           } else {
             // Make the filter directories an empty array to signal that this
             // root was already seen and needs to be watched for all files or
@@ -177,68 +158,62 @@ export async function watchmanCrawl(options: CrawlerOptions): Promise<{
     const results = new Map<string, WatchmanQueryResponse>();
     let isFresh = false;
     await Promise.all(
-      Array.from(rootProjectDirMappings).map(
-        async ([root, directoryFilters]) => {
-          const expression = Array.from(defaultWatchExpression);
-          const glob = [];
+      [...rootProjectDirMappings].map(async ([root, directoryFilters]) => {
+        const expression = [...defaultWatchExpression];
+        const glob = [];
 
-          if (directoryFilters.length > 0) {
-            expression.push([
-              'anyof',
-              ...directoryFilters.map(dir => ['dirname', dir]),
-            ]);
+        if (directoryFilters.length > 0) {
+          expression.push([
+            'anyof',
+            ...directoryFilters.map(dir => ['dirname', dir]),
+          ]);
 
-            for (const directory of directoryFilters) {
-              for (const extension of extensions) {
-                glob.push(`${directory}/**/*.${extension}`);
-              }
-            }
-          } else {
+          for (const directory of directoryFilters) {
             for (const extension of extensions) {
-              glob.push(`**/*.${extension}`);
+              glob.push(`${directory}/**/*.${extension}`);
             }
           }
-
-          // Jest is only going to store one type of clock; a string that
-          // represents a local clock. However, the Watchman crawler supports
-          // a second type of clock that can be written by automation outside of
-          // Jest, called an "scm query", which fetches changed files based on
-          // source control mergebases. The reason this is necessary is because
-          // local clocks are not portable across systems, but scm queries are.
-          // By using scm queries, we can create the haste map on a different
-          // system and import it, transforming the clock into a local clock.
-          const since = clocks.get(fastPath.relative(rootDir, root));
-
-          const query =
-            since !== undefined
-              ? // Use the `since` generator if we have a clock available
-                {expression, fields, since}
-              : // Otherwise use the `glob` filter
-                {expression, fields, glob, glob_includedotfiles: true};
-
-          const response = await cmd<WatchmanQueryResponse>(
-            'query',
-            root,
-            query,
-          );
-
-          if ('warning' in response) {
-            console.warn('watchman warning: ', response.warning);
+        } else {
+          for (const extension of extensions) {
+            glob.push(`**/*.${extension}`);
           }
+        }
 
-          // When a source-control query is used, we ignore the "is fresh"
-          // response from Watchman because it will be true despite the query
-          // being incremental.
-          const isSourceControlQuery =
-            typeof since !== 'string' &&
-            since?.scm?.['mergebase-with'] !== undefined;
-          if (!isSourceControlQuery) {
-            isFresh = isFresh || response.is_fresh_instance;
-          }
+        // Jest is only going to store one type of clock; a string that
+        // represents a local clock. However, the Watchman crawler supports
+        // a second type of clock that can be written by automation outside of
+        // Jest, called an "scm query", which fetches changed files based on
+        // source control mergebases. The reason this is necessary is because
+        // local clocks are not portable across systems, but scm queries are.
+        // By using scm queries, we can create the haste map on a different
+        // system and import it, transforming the clock into a local clock.
+        const since = clocks.get(fastPath.relative(rootDir, root));
 
-          results.set(root, response);
-        },
-      ),
+        const query =
+          since === undefined
+            ? // Without a clock, enumerate everything matching the globs
+              {expression, fields, glob, glob_includedotfiles: true}
+            : // With a clock available, ask only for the delta since then
+              {expression, fields, since};
+
+        const response = await cmd<WatchmanQueryResponse>('query', root, query);
+
+        if ('warning' in response) {
+          console.warn('watchman warning:', response.warning);
+        }
+
+        // When a source-control query is used, we ignore the "is fresh"
+        // response from Watchman because it will be true despite the query
+        // being incremental.
+        const isSourceControlQuery =
+          typeof since !== 'string' &&
+          since?.scm?.['mergebase-with'] !== undefined;
+        if (!isSourceControlQuery) {
+          isFresh = isFresh || response.is_fresh_instance;
+        }
+
+        results.set(root, response);
+      }),
     );
 
     return {
@@ -253,6 +228,35 @@ export async function watchmanCrawl(options: CrawlerOptions): Promise<{
   let results: Map<string, WatchmanQueryResponse>;
   let isFresh = false;
   try {
+    // https://facebook.github.io/watchman/docs/capabilities.html
+    // Check adds about ~28ms
+    const capabilities = await capabilityCheck(client, {
+      // If a required capability is missing then an error will be thrown,
+      // we don't need this assertion, so using optional instead.
+      optional: ['suffix-set'],
+    });
+
+    if (capabilities?.capabilities['suffix-set']) {
+      // If available, use the optimized `suffix-set` operation:
+      // https://facebook.github.io/watchman/docs/expr/suffix.html#suffix-set
+      defaultWatchExpression.push(['suffix', extensions]);
+    } else {
+      // Otherwise use the older and less optimal suffix tuple array
+      defaultWatchExpression.push([
+        'anyof',
+        ...extensions.map(extension => ['suffix', extension]),
+      ]);
+    }
+
+    if (options.computeSha1) {
+      const {capabilities: listedCapabilities} =
+        await cmd<WatchmanListCapabilitiesResponse>('list-capabilities');
+
+      if (listedCapabilities.includes('field-content.sha1hex')) {
+        fields.push('content.sha1hex');
+      }
+    }
+
     const watchmanRoots = await getWatchmanRoots(roots);
     const watchmanFileResults = await queryWatchmanForDirs(watchmanRoots);
 

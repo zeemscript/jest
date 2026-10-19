@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import chalk = require('chalk');
+import * as path from 'node:path';
+import chalk from 'chalk';
 import Resolver from 'jest-resolve';
 import {ValidationError} from 'jest-validate';
 
@@ -17,7 +17,7 @@ type ResolveOptions = {
   optional?: boolean;
 };
 
-export const BULLET: string = chalk.bold('\u25cf ');
+export const BULLET: string = chalk.bold('\u25CF ');
 export const DOCUMENTATION_NOTE = `  ${chalk.bold(
   'Configuration Documentation:',
 )}
@@ -52,19 +52,19 @@ export const resolve = (
 };
 
 export const escapeGlobCharacters = (path: string): string =>
-  path.replace(/([()*{}[\]!?\\])/g, '\\$1');
+  path.replaceAll(/([!()*?[\\\]{}])/g, '\\$1');
 
 export const replaceRootDirInPath = (
   rootDir: string,
   filePath: string,
 ): string => {
-  if (!/^<rootDir>/.test(filePath)) {
+  if (!filePath.startsWith('<rootDir>')) {
     return filePath;
   }
 
   return path.resolve(
     rootDir,
-    path.normalize(`./${filePath.substring('<rootDir>'.length)}`),
+    path.normalize(`./${filePath.slice('<rootDir>'.length)}`),
   );
 };
 
@@ -85,9 +85,7 @@ const _replaceRootDirInObject = <T extends ReplaceRootDirConfigObj>(
 type OrArray<T> = T | Array<T>;
 type ReplaceRootDirConfigObj = Record<string, string>;
 type ReplaceRootDirConfigValues =
-  | OrArray<ReplaceRootDirConfigObj>
-  | OrArray<RegExp>
-  | OrArray<string>;
+  OrArray<ReplaceRootDirConfigObj> | OrArray<RegExp> | OrArray<string>;
 
 export const _replaceRootDirTags = <T extends ReplaceRootDirConfigValues>(
   rootDir: string,

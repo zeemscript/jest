@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {AssertionError} from 'assert';
-import chalk = require('chalk');
+import {AssertionError} from 'node:assert';
+import chalk from 'chalk';
 import type {Circus} from '@jest/types';
 import {
-  DiffOptions,
+  type DiffOptions,
   diff,
   printExpected,
   printReceived,
@@ -50,14 +50,19 @@ const formatNodeAssertErrors = (
 
         if (originalError == null) {
           error = asyncError;
-        } else if (!originalError.stack) {
+        } else if (originalError.stack) {
+          error = originalError;
+        } else if (asyncError) {
           error = asyncError;
 
-          error.message = originalError.message
-            ? originalError.message
-            : `thrown: ${prettyFormat(originalError, {maxDepth: 3})}`;
+          error.message =
+            originalError.message ||
+            `thrown: ${prettyFormat(originalError, {maxDepth: 3})}`;
         } else {
-          error = originalError;
+          error = new Error(
+            originalError.message ||
+              `thrown: ${prettyFormat(originalError, {maxDepth: 3})}`,
+          );
         }
       } else {
         error = errors;
@@ -135,7 +140,7 @@ function assertionErrorMessage(
   const operatorName = getOperatorName(operator, stack);
   const trimmedStack = stack
     .replace(message, '')
-    .replace(/AssertionError(.*)/g, '');
+    .replaceAll(/AssertionError(.*)/g, '');
 
   if (operatorName === 'doesNotThrow') {
     return (

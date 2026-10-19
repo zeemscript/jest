@@ -8,10 +8,20 @@
 export {alignedAnsiStyleSerializer} from './alignedAnsiStyleSerializer';
 
 export {
+  hasSyncEsm,
   isJestJasmineRun,
+  isWatchmanAvailable,
+  onNodeVersions,
   skipSuiteOnJasmine,
   skipSuiteOnJestCircus,
-  onNodeVersions,
+  skipSuiteOnWindows,
+  skipSuiteWithoutWatchman,
+  testWithLinkedSyntheticModule,
+  testWithSyncEsm,
+  testWithVmEsm,
+  testWithoutSyncEsm,
 } from './ConditionalTest';
 
 export {makeGlobalConfig, makeProjectConfig} from './config';
+
+export {normalizeIcons} from './normalizeIcons';

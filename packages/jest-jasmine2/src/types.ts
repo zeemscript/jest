@@ -5,7 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {AssertionError} from 'assert';
+import type {AssertionError} from 'node:assert';
+import type * as Process from 'node:process';
 import type {AsymmetricMatchers, JestExpect} from '@jest/expect';
 import type CallTracker from './jasmine/CallTracker';
 import type Env from './jasmine/Env';
@@ -69,7 +70,7 @@ export type Jasmine = {
   version: string;
   testPath: string;
   addMatchers: (matchers: JasmineMatchersObject) => void;
-} & AsymmetricMatchers & {process: NodeJS.Process};
+} & AsymmetricMatchers & {process: typeof Process};
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

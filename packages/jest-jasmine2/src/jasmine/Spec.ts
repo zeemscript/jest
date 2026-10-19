@@ -28,16 +28,16 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-/* eslint-disable sort-keys, local/prefer-spread-eventually, local/prefer-rest-params-eventually, @typescript-eslint/no-empty-function */
+/* eslint-disable sort-keys, @typescript-eslint/no-empty-function */
 
-import {AssertionError} from 'assert';
+import {AssertionError} from 'node:assert';
 import type {FailedAssertion, Status} from '@jest/test-result';
 import type {Circus} from '@jest/types';
 import {convertDescriptorToString} from 'jest-util';
 import ExpectationFailed from '../ExpectationFailed';
 import assertionErrorMessage from '../assertionErrorMessage';
 import expectationResultFactory, {
-  Options as ExpectationResultFactoryOptions,
+  type Options as ExpectationResultFactoryOptions,
 } from '../expectationResultFactory';
 import type {QueueableFn, default as queueRunner} from '../queueRunner';
 import type {AssertionErrorWithStack} from '../types';
@@ -95,15 +95,15 @@ export default class Spec {
   currentRun?: ReturnType<typeof queueRunner>;
   markedTodo?: boolean;
   markedPending?: boolean;
-  expand?: boolean;
 
+  static expand?: boolean;
   static pendingSpecExceptionMessage: string;
 
   static isPendingSpecException(e: Error) {
     return !!(
       e &&
       e.toString &&
-      e.toString().indexOf(Spec.pendingSpecExceptionMessage) !== -1
+      e.toString().includes(Spec.pendingSpecExceptionMessage)
     );
   }
 
@@ -131,6 +131,7 @@ export default class Spec {
     this.queueRunnerFactory = attrs.queueRunnerFactory || function () {};
     this.throwOnExpectationFailure = !!attrs.throwOnExpectationFailure;
 
+    // eslint-disable-next-line unicorn/error-message
     this.initError = new Error();
     this.initError.name = '';
 
@@ -239,7 +240,7 @@ export default class Spec {
         expected: '',
         actual: '',
         error: this.isAssertionError(error)
-          ? assertionErrorMessage(error, {expand: this.expand})
+          ? assertionErrorMessage(error, {expand: Spec.expand})
           : error,
       },
       true,
@@ -312,5 +313,5 @@ const extractCustomPendingMessage = function (e: Error) {
   const boilerplateEnd =
     boilerplateStart + Spec.pendingSpecExceptionMessage.length;
 
-  return fullMessage.substr(boilerplateEnd);
+  return fullMessage.slice(boilerplateEnd);
 };

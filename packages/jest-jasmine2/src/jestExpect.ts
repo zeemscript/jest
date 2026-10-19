@@ -8,15 +8,14 @@
 /* eslint-disable local/prefer-spread-eventually */
 
 import {jestExpect} from '@jest/expect';
+import type {Global} from '@jest/types';
 import type {JasmineMatchersObject} from './types';
 
 export default function jestExpectAdapter(config: {expand: boolean}): void {
-  // eslint-disable-next-line no-restricted-globals
-  global.expect = jestExpect;
+  (globalThis as Global.Global).expect = jestExpect;
   jestExpect.setState({expand: config.expand});
 
-  // eslint-disable-next-line no-restricted-globals
-  const jasmine = global.jasmine;
+  const jasmine = (globalThis as Global.Global).jasmine;
   jasmine.anything = jestExpect.anything;
   jasmine.any = jestExpect.any;
   jasmine.objectContaining = jestExpect.objectContaining;
@@ -25,7 +24,7 @@ export default function jestExpectAdapter(config: {expand: boolean}): void {
 
   jasmine.addMatchers = (jasmineMatchersObject: JasmineMatchersObject) => {
     const jestMatchersObject = Object.create(null);
-    Object.keys(jasmineMatchersObject).forEach(name => {
+    for (const name of Object.keys(jasmineMatchersObject)) {
       jestMatchersObject[name] = function (...args: Array<unknown>) {
         // use "expect.extend" if you need to use equality testers (via this.equal)
         const result = jasmineMatchersObject[name](null, null);
@@ -36,7 +35,7 @@ export default function jestExpectAdapter(config: {expand: boolean}): void {
           ? negativeCompare.apply(null, args)
           : result.compare.apply(null, args);
       };
-    });
+    }
 
     jestExpect.extend(jestMatchersObject);
   };

@@ -21,9 +21,9 @@ describe('Runtime', () => {
       let hasThrown = false;
       try {
         runtime.requireModule(runtime.__mockRootPath, './throwing.js');
-      } catch (err) {
+      } catch (error) {
         hasThrown = true;
-        expect(err.stack).toMatch(/^Error: throwing\s+at Object.<anonymous>/);
+        expect(error.stack).toMatch(/^Error: throwing\s+at Object.<anonymous>/);
       }
       expect(hasThrown).toBe(true);
     });
@@ -38,19 +38,50 @@ describe('Runtime', () => {
 
       try {
         sum();
-      } catch (err) {
+      } catch (error) {
         hasThrown = true;
         if (process.platform === 'win32') {
-          expect(err.stack).toMatch(
+          expect(error.stack).toMatch(
             /^Error: throwing fn\s+at sum.+\\__tests__\\test_root\\throwing_fn\.js/,
           );
         } else {
-          expect(err.stack).toMatch(
+          expect(error.stack).toMatch(
             /^Error: throwing fn\s+at sum.+\/__tests__\/test_root\/throwing_fn\.js/,
           );
         }
       }
       expect(hasThrown).toBe(true);
     });
+  });
+
+  describe('process.getBuiltinModule', () => {
+    const itOnSupportedNodes =
+      typeof process.getBuiltinModule === 'function' ? it : it.skip;
+
+    itOnSupportedNodes('serves the sandbox process and module', async () => {
+      const runtime = await createRuntime(__filename);
+      const sandboxProcess = runtime._environment.global.process;
+      expect(sandboxProcess.getBuiltinModule('process')).toBe(sandboxProcess);
+      expect(sandboxProcess.getBuiltinModule('node:process')).toBe(
+        sandboxProcess,
+      );
+      expect(sandboxProcess.getBuiltinModule('module')).toBe(
+        runtime.requireModule(runtime.__mockRootPath, 'node:module'),
+      );
+    });
+
+    itOnSupportedNodes(
+      'serves builtins and undefined for unknown names',
+      async () => {
+        const runtime = await createRuntime(__filename);
+        const sandboxProcess = runtime._environment.global.process;
+        expect(sandboxProcess.getBuiltinModule('fs')).toBe(
+          runtime.requireModule(runtime.__mockRootPath, 'fs'),
+        );
+        expect(
+          sandboxProcess.getBuiltinModule('not-a-builtin'),
+        ).toBeUndefined();
+      },
+    );
   });
 });

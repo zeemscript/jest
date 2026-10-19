@@ -14,19 +14,29 @@ yarn
 
 in the root directory.
 
-Fetch `backers.json` file by running
+Change to the `website` directory:
+
+```bash
+cd website
+```
+
+Fetch the `backers.json` file by running:
 
 ```bash
 node fetchSupporters.js
 ```
 
-Then, run the server via
+Then start the development server:
 
 ```bash
 yarn start
 ```
 
-Note, you can also use `yarn workspace jest-website start` from the root of the Jest monorepo.
+Alternatively, from the root of the Jest monorepo, you can run:
+
+```bash
+yarn workspace jest-website start
+```
 
 ## Publish the website
 
@@ -44,4 +54,4 @@ An older Docusaurus v1 site exist for versions <= 25.x:
 
 - Netlify site: https://app.netlify.com/sites/jest-archive
 - Url: https://archive.jestjs.io
-- GitHub branch: https://github.com/facebook/jest/tree/jest-website-v1
+- GitHub branch: https://github.com/jestjs/jest/tree/jest-website-v1

@@ -5,13 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import ansiRegex = require('ansi-regex');
-import styles = require('ansi-styles');
-import chalk = require('chalk');
+import ansiRegex from 'ansi-regex';
+import styles from 'ansi-styles';
+import chalk from 'chalk';
 import type {SyncExpectationResult} from 'expect';
 import format from 'pretty-format';
 import {
-  Context,
+  type Context,
   toMatchInlineSnapshot,
   toMatchSnapshot,
   toThrowErrorMatchingInlineSnapshot,
@@ -1164,7 +1164,7 @@ describe('printSnapshotAndReceived', () => {
 
       test('number', () => {
         const expected = -0;
-        const received = NaN;
+        const received = Number.NaN;
 
         expect(testWithStringify(expected, received, false)).toMatchSnapshot();
       });

@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {createHash} from 'crypto';
-import * as path from 'path';
+import {createHash} from 'node:crypto';
+import * as path from 'node:path';
 import * as fs from 'graceful-fs';
 import {requireOrImportModule} from 'jest-util';
 import blacklist from './blacklist';
@@ -21,24 +21,14 @@ import type {
 
 const PACKAGE_JSON = `${path.sep}package.json`;
 
-let hasteImpl: HasteImpl | null = null;
-let hasteImplModulePath: string | null = null;
-
 function sha1hex(content: string | Buffer): string {
   return createHash('sha1').update(content).digest('hex');
 }
 
 export async function worker(data: WorkerMessage): Promise<WorkerMetadata> {
-  if (
-    data.hasteImplModulePath &&
-    data.hasteImplModulePath !== hasteImplModulePath
-  ) {
-    if (hasteImpl) {
-      throw new Error('jest-haste-map: hasteImplModulePath changed');
-    }
-    hasteImplModulePath = data.hasteImplModulePath;
-    hasteImpl = require(hasteImplModulePath);
-  }
+  const hasteImpl: HasteImpl | null = data.hasteImplModulePath
+    ? require(data.hasteImplModulePath)
+    : null;
 
   let content: string | undefined;
   let dependencies: WorkerMetadata['dependencies'];
@@ -66,10 +56,12 @@ export async function worker(data: WorkerMessage): Promise<WorkerMetadata> {
         id = fileData.name;
         module = [relativeFilePath, H.PACKAGE];
       }
-    } catch (err: any) {
-      throw new Error(`Cannot parse ${filePath} as JSON: ${err.message}`);
+    } catch (error: any) {
+      throw new Error(`Cannot parse ${filePath} as JSON: ${error.message}`, {
+        cause: error,
+      });
     }
-  } else if (!blacklist.has(filePath.substring(filePath.lastIndexOf('.')))) {
+  } else if (!blacklist.has(filePath.slice(filePath.lastIndexOf('.')))) {
     // Process a random file that is returned as a MODULE.
     if (hasteImpl) {
       id = hasteImpl.getHasteName(filePath);
@@ -83,13 +75,13 @@ export async function worker(data: WorkerMessage): Promise<WorkerMetadata> {
             false,
           )
         : defaultDependencyExtractor;
-      dependencies = Array.from(
-        extractor.extract(
+      dependencies = [
+        ...extractor.extract(
           content,
           filePath,
           defaultDependencyExtractor.extract,
         ),
-      );
+      ];
     }
 
     if (id) {

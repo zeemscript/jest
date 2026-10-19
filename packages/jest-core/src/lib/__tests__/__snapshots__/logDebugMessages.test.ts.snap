@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`prints the config object 1`] = `
 "{
@@ -7,12 +7,14 @@ exports[`prints the config object 1`] = `
     "cache": false,
     "cacheDirectory": "/test_cache_dir/",
     "clearMocks": false,
+    "collectCoverage": false,
     "collectCoverageFrom": [
       "src",
       "!public"
     ],
     "coverageDirectory": "coverage",
     "coveragePathIgnorePatterns": [],
+    "coverageProvider": "babel",
     "cwd": "/test_root_dir/",
     "detectLeaks": false,
     "detectOpenHandles": false,
@@ -43,6 +45,7 @@ exports[`prints the config object 1`] = `
       "path/to/dir/test"
     ],
     "runner": "jest-runner",
+    "runnerOptions": {},
     "runtime": "/test_module_loader_path",
     "sandboxInjectedGlobals": [],
     "setupFiles": [],
@@ -61,8 +64,10 @@ exports[`prints the config object 1`] = `
       "\\\\.test\\\\.js$"
     ],
     "testRunner": "myRunner",
+    "testTimeout": 5000,
     "transform": [],
     "transformIgnorePatterns": [],
+    "waitForUnhandledRejections": false,
     "watchPathIgnorePatterns": []
   },
   "globalConfig": {
@@ -72,6 +77,7 @@ exports[`prints the config object 1`] = `
     "ci": false,
     "collectCoverage": false,
     "collectCoverageFrom": [],
+    "collectTests": false,
     "coverageDirectory": "coverage",
     "coverageProvider": "babel",
     "coverageReporters": [],
@@ -101,6 +107,7 @@ exports[`prints the config object 1`] = `
     "projects": [],
     "reporters": [],
     "rootDir": "/test_root_dir/",
+    "runInBand": false,
     "runTestsByPath": false,
     "seed": 1234,
     "silent": false,
@@ -108,12 +115,13 @@ exports[`prints the config object 1`] = `
     "snapshotFormat": {},
     "testFailureExitCode": 1,
     "testNamePattern": "",
-    "testPathPattern": "",
+    "testPathPatterns": [],
     "testSequencer": "@jest/test-sequencer",
     "testTimeout": 5000,
     "updateSnapshot": "none",
     "useStderr": false,
     "verbose": false,
+    "waitForUnhandledRejections": false,
     "watch": true,
     "watchAll": false,
     "watchPlugins": [],

@@ -5,8 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import diff from 'diff-sequences';
+import diff from '@jest/diff-sequences';
 import {DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT, Diff} from './cleanupSemantic';
+import {escapeControlCharacters} from './escapeControlCharacters';
 import {
   joinAlignedDiffsExpand,
   joinAlignedDiffsNoExpand,
@@ -26,7 +27,7 @@ const countChanges = (diffs: Array<Diff>): ChangeCounts => {
   let a = 0;
   let b = 0;
 
-  diffs.forEach(diff => {
+  for (const diff of diffs) {
     switch (diff[0]) {
       case DIFF_DELETE:
         a += 1;
@@ -36,7 +37,7 @@ const countChanges = (diffs: Array<Diff>): ChangeCounts => {
         b += 1;
         break;
     }
-  });
+  }
 
   return {a, b};
 };
@@ -101,8 +102,8 @@ export const diffLinesUnified = (
 ): string =>
   printDiffLines(
     diffLinesRaw(
-      isEmptyString(aLines) ? [] : aLines,
-      isEmptyString(bLines) ? [] : bLines,
+      isEmptyString(aLines) ? [] : aLines.map(escapeControlCharacters),
+      isEmptyString(bLines) ? [] : bLines.map(escapeControlCharacters),
     ),
     normalizeDiffOptions(options),
   );
@@ -139,7 +140,7 @@ export const diffLinesUnified2 = (
   // Replace comparison lines with displayable lines.
   let aIndex = 0;
   let bIndex = 0;
-  diffs.forEach((diff: Diff) => {
+  for (const diff of diffs) {
     switch (diff[0]) {
       case DIFF_DELETE:
         diff[1] = aLinesDisplay[aIndex];
@@ -156,7 +157,7 @@ export const diffLinesUnified2 = (
         aIndex += 1;
         bIndex += 1;
     }
-  });
+  }
 
   return printDiffLines(diffs, normalizeDiffOptions(options));
 };

@@ -110,6 +110,7 @@ describe('worker', () => {
       await worker({
         computeDependencies: true,
         filePath: path.join('/project', 'fruits', 'Strawberry.js'),
+        hasteImplModulePath: require.resolve('./haste_impl.js'),
         rootDir,
       }),
     ).toEqual({
@@ -138,8 +139,8 @@ describe('worker', () => {
 
     try {
       await worker({computeDependencies: true, filePath: '/kiwi.js', rootDir});
-    } catch (err) {
-      error = err;
+    } catch (thrownError) {
+      error = thrownError;
     }
 
     expect(error.message).toBe("Cannot read path '/kiwi.js'.");

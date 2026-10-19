@@ -1,4 +1,14 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`allows nullable or undefined args when templating object each args 1`] = `
+"PASS __tests__/eachTemplate.test.js
+  ✓ allows templating "value"
+  ✓ allows templating "null"
+  ✓ allows templating "undefined"
+  ✓ allows templating "1"
+  ✓ allows templating "null"
+  ✓ allows templating "undefined""
+`;
 
 exports[`formats args with pretty format when given %p 1`] = `
 "PASS __tests__/pretty.test.js
@@ -63,12 +73,12 @@ exports[`shows error message when not enough arguments are supplied to tests 1`]
        6 |  */
        7 |
     >  8 | it.each\`
-         |         ^
+         |        ^
        9 |   left    | right
       10 |   \${true} | \${true}
       11 |   \${true}
 
-      at Object.<anonymous> (__tests__/eachException.test.js:8:9)
+      at Object.<anonymous> (__tests__/eachException.test.js:8:8)
 
   ● throws exception when not enough arguments are supplied $left == $right
 
@@ -86,12 +96,12 @@ exports[`shows error message when not enough arguments are supplied to tests 1`]
       17 | );
       18 |
     > 19 | it.each\`
-         |         ^
+         |        ^
       20 |   left    | right   | up | down
       21 |   \${true} | \${true}
       22 | \`(
 
-      at Object.<anonymous> (__tests__/eachException.test.js:19:9)"
+      at Object.<anonymous> (__tests__/eachException.test.js:19:8)"
 `;
 
 exports[`shows only the tests with .only as being ran 1`] = `

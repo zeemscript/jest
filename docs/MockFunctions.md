@@ -13,8 +13,8 @@ Let's imagine we're testing an implementation of a function `forEach`, which inv
 
 ```js title="forEach.js"
 export function forEach(items, callback) {
-  for (let index = 0; index < items.length; index++) {
-    callback(items[index]);
+  for (const item of items) {
+    callback(item);
   }
 }
 ```
@@ -22,7 +22,7 @@ export function forEach(items, callback) {
 To test this function, we can use a mock function, and inspect the mock's state to ensure the callback is invoked as expected.
 
 ```js title="forEach.test.js"
-const forEach = require('./forEach');
+import {forEach} from './forEach';
 
 const mockCallback = jest.fn(x => 42 + x);
 
@@ -272,7 +272,7 @@ const otherObj = {
 
 ## Mock Names
 
-You can optionally provide a name for your mock functions, which will be displayed instead of `'jest.fn()'` in the test error output. Use [`.mockName()`](MockFunctionAPI.md/#mockfnmocknamename) if you want to be able to quickly identify the mock function reporting an error in your test output.
+You can optionally provide a name for your mock functions, which will be displayed instead of `'jest.fn()'` in the test error output. Use [`.mockName()`](MockFunctionAPI.md#mockfnmocknamename) if you want to be able to quickly identify the mock function reporting an error in your test output.
 
 ```javascript
 const myMockFn = jest

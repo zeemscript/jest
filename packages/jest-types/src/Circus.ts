@@ -5,9 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type * as ProcessModule from 'node:process';
 import type * as Global from './Global';
 
-type Process = NodeJS.Process;
+type Process = typeof ProcessModule;
 
 export type DoneFn = Global.DoneFn;
 export type BlockFn = Global.BlockFn;
@@ -23,6 +24,11 @@ export type HookFn = Global.HookFn;
 export type AsyncFn = TestFn | HookFn;
 export type SharedHookType = 'afterAll' | 'beforeAll';
 export type HookType = SharedHookType | 'afterEach' | 'beforeEach';
+export type DescribeRetryOptions = {
+  logErrorsBeforeRetry?: boolean;
+  numRetries: number;
+  waitBeforeRetry?: number;
+};
 export type TestContext = Global.TestContext;
 export type Exception = any; // Since in JS anything can be thrown as an error.
 export type FormattedError = string; // String representation of error.
@@ -81,6 +87,11 @@ export type SyncEvent =
       // an `afterAll` hook)
       name: 'error';
       error: Exception;
+      promise?: Promise<unknown>;
+    }
+  | {
+      name: 'error_handled';
+      promise: Promise<unknown>;
     };
 
 export type AsyncEvent =
@@ -129,6 +140,10 @@ export type AsyncEvent =
       test: TestEntry;
     }
   | {
+      name: 'describe_retry';
+      describeBlock: DescribeBlock;
+    }
+  | {
       // the `test` in this case is all hooks + it/test function, not just the
       // function passed to `it/test`
       name: 'test_start';
@@ -150,9 +165,19 @@ export type AsyncEvent =
       // test failure is defined by presence of errors in `test.errors`,
       // `test_done` indicates that the test and all its hooks were run,
       // and nothing else will change it's state in the future. (except third
-      // party extentions/plugins)
+      // party extensions/plugins)
       name: 'test_done';
       test: TestEntry;
+    }
+  | {
+      name: 'concurrent_tests_start';
+      tests: Array<TestEntry>;
+      describeBlock: DescribeBlock;
+    }
+  | {
+      name: 'concurrent_tests_end';
+      tests: Array<TestEntry>;
+      describeBlock: DescribeBlock;
     }
   | {
       name: 'run_describe_start';
@@ -197,31 +222,39 @@ export type TestResult = {
   duration?: number | null;
   errors: Array<FormattedError>;
   errorsDetailed: Array<MatcherResults | unknown>;
+  /**
+   * Whether [`test.failing()`](https://jestjs.io/docs/api#testfailingname-fn-timeout)
+   * was used.
+   */
+  failing?: boolean;
   invocations: number;
+  startedAt?: number | null;
   status: TestStatus;
   location?: {column: number; line: number} | null;
   numPassingAsserts: number;
   retryReasons: Array<FormattedError>;
+  retryReasonsDetailed: Array<Error>;
   testPath: TestNamesPath;
 };
 
 export type RunResult = {
   unhandledErrors: Array<FormattedError>;
+  unhandledErrorsDetailed: Array<Error>;
   testResults: TestResults;
 };
 
 export type TestResults = Array<TestResult>;
 
 export type GlobalErrorHandlers = {
-  uncaughtException: Array<(exception: Exception) => void>;
-  unhandledRejection: Array<
-    (exception: Exception, promise: Promise<unknown>) => void
-  >;
+  rejectionHandled: Array<(promise: Promise<unknown>) => void>;
+  uncaughtException: Array<NodeJS.UncaughtExceptionListener>;
+  unhandledRejection: Array<NodeJS.UnhandledRejectionListener>;
 };
 
 export type State = {
   currentDescribeBlock: DescribeBlock;
   currentlyRunningTest?: TestEntry | null; // including when hooks are being executed
+  describeRetryOptions: WeakMap<DescribeBlock, DescribeRetryOptions>;
   expand?: boolean; // expand error messages
   hasFocusedTests: boolean; // that are defined using test.only
   hasStarted: boolean; // whether the rootDescribeBlock has started running
@@ -230,6 +263,7 @@ export type State = {
   // the original ones.
   originalGlobalErrorHandlers?: GlobalErrorHandlers;
   parentProcess: Process | null; // process object from the outer scope
+  processErrorGeneration: number;
   randomize?: boolean;
   rootDescribeBlock: DescribeBlock;
   seed: number;
@@ -238,6 +272,15 @@ export type State = {
   unhandledErrors: Array<Exception>;
   includeTestLocationInResult: boolean;
   maxConcurrency: number;
+  unhandledRejectionErrorByPromise: Map<Promise<unknown>, Exception>;
+  unhandledRejectionErrorByPromiseByHook: WeakMap<
+    Hook,
+    Map<Promise<unknown>, Exception>
+  >;
+  unhandledRejectionErrorByPromiseTarget: WeakMap<
+    Promise<unknown>,
+    Map<Promise<unknown>, Exception>
+  >;
 };
 
 export type DescribeBlock = {
@@ -251,7 +294,8 @@ export type DescribeBlock = {
   tests: Array<TestEntry>;
 };
 
-export type TestError = Exception | [Exception | undefined, Exception]; // the error from the test, as well as a backup error for async
+export type TestError =
+  Exception | [Exception | undefined, Exception | undefined]; // the error from the test, as well as a backup error for async
 
 export type TestEntry = {
   type: 'test';
@@ -271,4 +315,5 @@ export type TestEntry = {
   status?: TestStatus | null; // whether the test has been skipped or run already
   timeout?: number;
   failing: boolean;
+  unhandledRejectionErrorByPromise: Map<Promise<unknown>, Exception>;
 };

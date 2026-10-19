@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import leven from 'leven';
 import {format as prettyFormat} from 'pretty-format';
 
-const BULLET: string = chalk.bold('\u25cf');
+const BULLET: string = chalk.bold('\u25CF');
 export const DEPRECATION = `${BULLET} Deprecation Warning`;
 export const ERROR = `${BULLET} Validation Error`;
 export const WARNING = `${BULLET} Validation Warning`;
@@ -22,9 +22,9 @@ export const format = (value: unknown): string =>
 export const formatPrettyObject = (value: unknown): string =>
   typeof value === 'function'
     ? value.toString()
-    : typeof value === 'undefined'
-    ? 'undefined'
-    : JSON.stringify(value, null, 2).split('\n').join('\n    ');
+    : value === undefined
+      ? 'undefined'
+      : JSON.stringify(value, null, 2).split('\n').join('\n    ');
 
 export class ValidationError extends Error {
   override name: string;

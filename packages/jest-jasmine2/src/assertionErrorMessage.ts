@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import {
-  DiffOptions,
+  type DiffOptions,
   diff,
   printExpected,
   printReceived,
@@ -98,7 +98,7 @@ function assertionErrorMessage(
   const operatorName = getOperatorName(operator, stack);
   const trimmedStack = stack
     .replace(message, '')
-    .replace(/AssertionError(.*)/g, '');
+    .replaceAll(/AssertionError(.*)/g, '');
 
   if (operatorName === 'doesNotThrow') {
     return `${

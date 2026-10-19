@@ -5,8 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import micromatch = require('micromatch');
+import * as path from 'node:path';
 import type {Config} from '@jest/types';
 import {escapePathForRegex} from 'jest-regex-util';
 import {globsToMatcher, replacePathSepForGlob} from 'jest-util';
@@ -41,8 +40,8 @@ export default function shouldInstrument(
   }
 
   if (
-    config.forceCoverageMatch.length &&
-    micromatch.any(filename, config.forceCoverageMatch)
+    config.forceCoverageMatch.length > 0 &&
+    globsToMatcher(config.forceCoverageMatch)(filename)
   ) {
     return true;
   }
@@ -71,16 +70,20 @@ export default function shouldInstrument(
 
   if (
     // still cover if `only` is specified
-    options.collectCoverageFrom.length &&
+    options.collectCoverageFrom.length > 0 &&
     !globsToMatcher(options.collectCoverageFrom)(
-      replacePathSepForGlob(path.relative(config.rootDir, filename)),
+      replacePathSepForGlob(
+        path.relative(options.globalRootDir ?? config.rootDir, filename),
+      ),
     )
   ) {
     return false;
   }
 
   if (
-    config.coveragePathIgnorePatterns.some(pattern => !!filename.match(pattern))
+    config.coveragePathIgnorePatterns.some(pattern =>
+      new RegExp(pattern).test(filename),
+    )
   ) {
     return false;
   }

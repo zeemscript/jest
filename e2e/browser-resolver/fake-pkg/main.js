@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/* eslint-env browser */
+/* global document */
 
 'use strict';
 
 const div = document.createElement('div');
 
-div.innerText = 'Hello!';
+div.textContent = 'Hello!';
 
 module.exports = div;

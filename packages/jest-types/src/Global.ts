@@ -25,15 +25,12 @@ export type GeneratorReturningTestFn = (
   this: TestContext,
 ) => TestReturnValueGenerator;
 
-// eslint-disable-next-line @typescript-eslint/ban-types
 export type NameLike = number | Function;
 
 export type TestName = string;
 export type TestNameLike = TestName | NameLike;
 export type TestFn =
-  | PromiseReturningTestFn
-  | GeneratorReturningTestFn
-  | DoneTakingTestFn;
+  PromiseReturningTestFn | GeneratorReturningTestFn | DoneTakingTestFn;
 export type ConcurrentTestFn = () => TestReturnValuePromise;
 export type BlockFn = () => void;
 export type BlockName = string;
@@ -57,37 +54,48 @@ export type EachTestFn<EachCallback extends TestCallback> = (
 
 interface Each<EachFn extends TestFn | BlockFn> {
   // when the table is an array of object literals
-  <T extends Record<string, unknown>>(table: ReadonlyArray<T>): (
+  <T extends Record<string, unknown>>(
+    table: ReadonlyArray<T>,
+  ): (
     name: string | NameLike,
     fn: (arg: T, done: DoneFn) => ReturnType<EachFn>,
     timeout?: number,
   ) => void;
 
   // when the table is an array of tuples
-  <T extends readonly [unknown, ...Array<unknown>]>(table: ReadonlyArray<T>): (
+  <T extends readonly [unknown, ...Array<unknown>]>(
+    table: ReadonlyArray<T>,
+  ): (
     name: string | NameLike,
-    fn: (...args: T) => ReturnType<EachFn>,
+    fn: (...args: [...T]) => ReturnType<EachFn>,
     timeout?: number,
   ) => void;
 
   // when the table is an array of arrays
-  <T extends ReadonlyArray<unknown>>(table: ReadonlyArray<T>): (
+  <T extends ReadonlyArray<unknown>>(
+    table: ReadonlyArray<T>,
+  ): (
     name: string | NameLike,
     fn: (...args: T) => ReturnType<EachFn>,
     timeout?: number,
   ) => void;
 
   // when the table is a tuple or array
-  <T>(table: ReadonlyArray<T>): (
+  <T>(
+    table: ReadonlyArray<T>,
+  ): (
     name: string | NameLike,
     fn: (arg: T, done: DoneFn) => ReturnType<EachFn>,
     timeout?: number,
   ) => void;
 
   // when the table is a template literal
-  <T = unknown>(strings: TemplateStringsArray, ...expressions: Array<T>): (
+  <T extends Array<unknown>>(
+    strings: TemplateStringsArray,
+    ...expressions: T
+  ): (
     name: string | NameLike,
-    fn: (arg: Record<string, T>, done: DoneFn) => ReturnType<EachFn>,
+    fn: (arg: Record<string, T[number]>, done: DoneFn) => ReturnType<EachFn>,
     timeout?: number,
   ) => void;
 
@@ -102,9 +110,7 @@ interface Each<EachFn extends TestFn | BlockFn> {
   ) => void;
 }
 
-export interface HookBase {
-  (fn: HookFn, timeout?: number): void;
-}
+export type HookBase = (fn: HookFn, timeout?: number) => void;
 
 export interface Failing<T extends TestFn> {
   (testName: TestNameLike, fn: T, timeout?: number): void;
@@ -168,7 +174,6 @@ export interface GlobalAdditions extends TestFrameworkGlobals {
 }
 
 export interface Global
-  extends GlobalAdditions,
-    Omit<typeof globalThis, keyof GlobalAdditions> {
+  extends GlobalAdditions, Omit<typeof globalThis, keyof GlobalAdditions> {
   [extras: PropertyKey]: unknown;
 }

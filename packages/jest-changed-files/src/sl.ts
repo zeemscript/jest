@@ -6,9 +6,8 @@
  *
  */
 
-import * as path from 'path';
-import {types} from 'util';
-import execa = require('execa');
+import * as path from 'node:path';
+import execa from 'execa';
 import type {SCMAdapter} from './types';
 
 /**
@@ -16,6 +15,9 @@ import type {SCMAdapter} from './types';
  * More info in `sl help environment`.  _HG_PLAIN is intentional
  */
 const env = {...process.env, HGPLAIN: '1'};
+
+// Whether `sl` is a steam locomotive or not
+let isSteamLocomotive = false;
 
 const adapter: SCMAdapter = {
   findChangedFiles: async (cwd, options) => {
@@ -34,19 +36,7 @@ const adapter: SCMAdapter = {
     }
     args.push(...includePaths);
 
-    let result: execa.ExecaReturnValue;
-
-    try {
-      result = await execa('sl', args, {cwd, env});
-    } catch (e) {
-      if (types.isNativeError(e)) {
-        const err = e as execa.ExecaError;
-        // TODO: Should we keep the original `message`?
-        err.message = err.stderr;
-      }
-
-      throw e;
-    }
+    const result = await execa('sl', args, {cwd, env});
 
     return result.stdout
       .split('\n')
@@ -55,8 +45,29 @@ const adapter: SCMAdapter = {
   },
 
   getRoot: async cwd => {
+    if (isSteamLocomotive) {
+      return null;
+    }
+
     try {
-      const result = await execa('sl', ['root'], {cwd, env});
+      const subprocess = execa('sl', ['root'], {cwd, env});
+
+      // Check if we're calling sl (steam locomotive) instead of sl (sapling)
+      // by looking for the escape character in the first chunk of data.
+      if (subprocess.stdout) {
+        subprocess.stdout.once('data', (data: Buffer | string) => {
+          data = Buffer.isBuffer(data) ? data.toString() : data;
+          if (data.codePointAt(0) === 27) {
+            subprocess.cancel();
+            isSteamLocomotive = true;
+          }
+        });
+      }
+
+      const result = await subprocess;
+      if (result.killed && isSteamLocomotive) {
+        return null;
+      }
 
       return result.stdout;
     } catch {

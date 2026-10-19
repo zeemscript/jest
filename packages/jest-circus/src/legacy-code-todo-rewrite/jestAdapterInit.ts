@@ -5,17 +5,24 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type * as Process from 'node:process';
 import type {JestEnvironment} from '@jest/environment';
-import {JestExpect, jestExpect} from '@jest/expect';
+import {type JestExpect, jestExpect} from '@jest/expect';
 import {
-  AssertionResult,
-  Status,
-  TestFileEvent,
-  TestResult,
+  type AssertionResult,
+  type Status,
+  type TestFileEvent,
+  type TestResult,
   createEmptyTestResult,
+  makeCollectedTestResult,
 } from '@jest/test-result';
 import type {Circus, Config, Global} from '@jest/types';
-import {formatExecError, formatResultsErrors} from 'jest-message-util';
+import {
+  formatErrorStack,
+  formatExecError,
+  formatResultsErrors,
+} from 'jest-message-util';
+import type Runtime from 'jest-runtime';
 import {
   SnapshotState,
   addSerializer,
@@ -23,22 +30,32 @@ import {
 } from 'jest-snapshot';
 import globals from '..';
 import run from '../run';
-import {
-  ROOT_DESCRIBE_BLOCK_NAME,
-  addEventHandler,
-  dispatch,
-  getState as getRunnerState,
-} from '../state';
+import {addEventHandler, dispatch, getState as getRunnerState} from '../state';
 import testCaseReportHandler from '../testCaseReportHandler';
-import {getTestID} from '../utils';
+import {RETRY_TIMES_SETTER} from '../types';
+import {unhandledRejectionHandler} from '../unhandledRejectionHandler';
+import {getTestID, parseSingleTestResult} from '../utils';
 
 interface RuntimeGlobals extends Global.TestFrameworkGlobals {
   expect: JestExpect;
 }
 
+// Retry errors are rendered here rather than by the reporter, because the
+// reporter only sees what survives worker serialization — which drops the
+// `errors` of an `AggregateError`.
+const makeRetryErrorFormatter =
+  (
+    config: Config.ProjectConfig,
+    globalConfig: Config.GlobalConfig,
+    testPath: string,
+  ) =>
+  (error: Error): string =>
+    formatErrorStack(error, config, globalConfig, testPath);
+
 export const initialize = async ({
   config,
   environment,
+  runtime,
   globalConfig,
   localRequire,
   parentProcess,
@@ -48,10 +65,11 @@ export const initialize = async ({
 }: {
   config: Config.ProjectConfig;
   environment: JestEnvironment;
+  runtime: Runtime;
   globalConfig: Config.GlobalConfig;
   localRequire: <T = unknown>(path: string) => T;
   testPath: string;
-  parentProcess: NodeJS.Process;
+  parentProcess: typeof Process;
   sendMessageToJest?: TestFileEvent;
   setGlobalsForRuntime: (globals: RuntimeGlobals) => void;
 }): Promise<{
@@ -62,6 +80,7 @@ export const initialize = async ({
     getRunnerState().testTimeout = globalConfig.testTimeout;
   }
   getRunnerState().maxConcurrency = globalConfig.maxConcurrency;
+  getRunnerState().expand = globalConfig.expand;
 
   getRunnerState().randomize = globalConfig.randomize;
   getRunnerState().seed = globalConfig.seed;
@@ -89,6 +108,17 @@ export const initialize = async ({
     expect: jestExpect,
   };
   setGlobalsForRuntime(runtimeGlobals);
+  environment.global[RETRY_TIMES_SETTER] = (
+    retryOptions: Circus.DescribeRetryOptions,
+  ) => {
+    const state = getRunnerState();
+    if (state.hasStarted) {
+      throw new Error(
+        'Cannot set retry options after tests have started running. Retry options must be set synchronously.',
+      );
+    }
+    state.describeRetryOptions.set(state.currentDescribeBlock, retryOptions);
+  };
 
   if (config.injectGlobals) {
     Object.assign(environment.global, runtimeGlobals);
@@ -107,10 +137,8 @@ export const initialize = async ({
 
   // Jest tests snapshotSerializers in order preceding built-in serializers.
   // Therefore, add in reverse because the last added is the first tested.
-  config.snapshotSerializers
-    .concat()
-    .reverse()
-    .forEach(path => addSerializer(localRequire(path)));
+  for (const path of [...config.snapshotSerializers].reverse())
+    addSerializer(localRequire(path));
 
   const snapshotResolver = await buildSnapshotResolver(config, localRequire);
   const snapshotPath = snapshotResolver.resolveSnapshotPath(testPath);
@@ -126,23 +154,122 @@ export const initialize = async ({
 
   addEventHandler(handleSnapshotStateAfterRetry(snapshotState));
   if (sendMessageToJest) {
-    addEventHandler(testCaseReportHandler(testPath, sendMessageToJest));
+    addEventHandler(
+      testCaseReportHandler(
+        testPath,
+        sendMessageToJest,
+        makeRetryErrorFormatter(config, globalConfig, testPath),
+      ),
+    );
   }
+
+  addEventHandler(
+    unhandledRejectionHandler(runtime, globalConfig.waitForUnhandledRejections),
+  );
 
   // Return it back to the outer scope (test runner outside the VM).
   return {globals: globalsObject, snapshotState};
 };
 
+export const collectTestsWithoutRunning = async ({
+  config,
+  testPath,
+}: {
+  config: Config.ProjectConfig;
+  testPath: string;
+}): Promise<TestResult> => {
+  const {hasFocusedTests, rootDescribeBlock, testNamePattern} =
+    getRunnerState();
+
+  const assertionResults: Array<AssertionResult> = [];
+
+  // Mirror the status resolution performed by an actual run (see `_runTest` in
+  // `run.ts` and `parseSingleTestResult` in `utils.ts`) so collected counts
+  // match what executing the suite would report — without running test bodies.
+  const walk = (block: Circus.DescribeBlock, parent: WalkContext): void => {
+    for (const child of block.children) {
+      if (child.type === 'describeBlock') {
+        walk(child, {
+          ancestors: [...parent.ancestors, child.name],
+          skipped: parent.skipped || child.mode === 'skip',
+        });
+        continue;
+      }
+
+      // Same conditions `_runTest` uses to dispatch `test_skip`: an actual run
+      // still reports these as pending, so collection counts them too.
+      const deselected =
+        testNamePattern != null && !testNamePattern.test(getTestID(child));
+      const skipped =
+        parent.skipped ||
+        child.mode === 'skip' ||
+        (hasFocusedTests && child.mode === undefined) ||
+        deselected;
+
+      let status: Status;
+      let wouldRun: true | undefined;
+      if (skipped) {
+        status = 'pending';
+      } else if (child.mode === 'todo') {
+        status = 'todo';
+      } else {
+        // Test bodies are never executed in collection mode, so a selected test
+        // is reported in the passed bucket and flagged as `wouldRun`.
+        status = 'passed';
+        wouldRun = true;
+      }
+
+      const title = child.name;
+      assertionResults.push({
+        ancestorTitles: [...parent.ancestors],
+        duration: null,
+        failing: child.failing,
+        failureDetails: [],
+        failureMessages: [],
+        fullName: [...parent.ancestors, title].join(' '),
+        invocations: 0,
+        location: null,
+        numPassingAsserts: 0,
+        retryReasons: [],
+        startAt: null,
+        status,
+        title,
+        wouldRun,
+      });
+    }
+  };
+  walk(rootDescribeBlock, {
+    ancestors: [],
+    skipped: rootDescribeBlock.mode === 'skip',
+  });
+
+  await dispatch({name: 'teardown'});
+
+  return makeCollectedTestResult(assertionResults, {
+    displayName: config.displayName,
+    testFilePath: testPath,
+  });
+};
+
+type WalkContext = {ancestors: Array<string>; skipped: boolean};
+
 export const runAndTransformResultsToJestFormat = async ({
   config,
   globalConfig,
+  setupAfterEnvPerfStats,
   testPath,
 }: {
   config: Config.ProjectConfig;
   globalConfig: Config.GlobalConfig;
   testPath: string;
+  setupAfterEnvPerfStats: Config.SetupAfterEnvPerfStats;
 }): Promise<TestResult> => {
   const runResult: Circus.RunResult = await run();
+  const formatRetryError = makeRetryErrorFormatter(
+    config,
+    globalConfig,
+    testPath,
+  );
 
   let numFailingTests = 0;
   let numPassingTests = 0;
@@ -151,41 +278,24 @@ export const runAndTransformResultsToJestFormat = async ({
 
   const assertionResults: Array<AssertionResult> = runResult.testResults.map(
     testResult => {
-      let status: Status;
-      if (testResult.status === 'skip') {
-        status = 'pending';
+      // `TestCaseResult` names the same instant `startedAt`, so the field has
+      // to be renamed rather than spread through.
+      const {startedAt, ...assertionResult} = parseSingleTestResult(
+        testResult,
+        formatRetryError,
+      );
+
+      if (assertionResult.status === 'pending') {
         numPendingTests += 1;
-      } else if (testResult.status === 'todo') {
-        status = 'todo';
+      } else if (assertionResult.status === 'todo') {
         numTodoTests += 1;
-      } else if (testResult.errors.length) {
-        status = 'failed';
+      } else if (assertionResult.status === 'failed') {
         numFailingTests += 1;
       } else {
-        status = 'passed';
         numPassingTests += 1;
       }
 
-      const ancestorTitles = testResult.testPath.filter(
-        name => name !== ROOT_DESCRIBE_BLOCK_NAME,
-      );
-      const title = ancestorTitles.pop();
-
-      return {
-        ancestorTitles,
-        duration: testResult.duration,
-        failureDetails: testResult.errorsDetailed,
-        failureMessages: testResult.errors,
-        fullName: title
-          ? ancestorTitles.concat(title).join(' ')
-          : ancestorTitles.join(' '),
-        invocations: testResult.invocations,
-        location: testResult.location,
-        numPassingAsserts: testResult.numPassingAsserts,
-        retryReasons: testResult.retryReasons,
-        status,
-        title: testResult.testPath[testResult.testPath.length - 1],
-      };
+      return {...assertionResult, startAt: startedAt};
     },
   );
 
@@ -197,20 +307,22 @@ export const runAndTransformResultsToJestFormat = async ({
   );
   let testExecError;
 
-  if (runResult.unhandledErrors.length) {
+  if (runResult.unhandledErrors.length > 0) {
     testExecError = {
       message: '',
       stack: runResult.unhandledErrors.join('\n'),
     };
-    failureMessage = `${failureMessage || ''}\n\n${runResult.unhandledErrors
-      .map(err => formatExecError(err, config, globalConfig))
+    failureMessage = `${failureMessage || ''}\n\n${runResult.unhandledErrorsDetailed
+      .map(error => formatExecError(error, config, globalConfig))
       .join('\n')}`;
   }
 
   await dispatch({name: 'teardown'});
 
+  const emptyTestResult = createEmptyTestResult();
+
   return {
-    ...createEmptyTestResult(),
+    ...emptyTestResult,
     console: undefined,
     displayName: config.displayName,
     failureMessage,
@@ -218,6 +330,10 @@ export const runAndTransformResultsToJestFormat = async ({
     numPassingTests,
     numPendingTests,
     numTodoTests,
+    perfStats: {
+      ...emptyTestResult.perfStats,
+      ...setupAfterEnvPerfStats,
+    },
     testExecError,
     testFilePath: testPath,
     testResults: assertionResults,
@@ -229,15 +345,19 @@ const handleSnapshotStateAfterRetry =
     switch (event.name) {
       case 'test_retry': {
         // Clear any snapshot data that occurred in previous test run
-        snapshotState.clear();
+        snapshotState.clear(event.test);
       }
     }
   };
 
-const eventHandler = async (event: Circus.Event) => {
+// Exported for direct access from unit tests.
+export const eventHandler = async (event: Circus.Event): Promise<void> => {
   switch (event.name) {
     case 'test_start': {
-      jestExpect.setState({currentTestName: getTestID(event.test)});
+      jestExpect.setState({
+        currentTestName: getTestID(event.test),
+        testFailing: event.test.failing,
+      });
       break;
     }
     case 'test_done': {
@@ -250,9 +370,13 @@ const eventHandler = async (event: Circus.Event) => {
 };
 
 const _addExpectedAssertionErrors = (test: Circus.TestEntry) => {
+  const {isExpectingAssertions} = jestExpect.getState();
   const failures = jestExpect.extractExpectedAssertionsErrors();
-  const errors = failures.map(failure => failure.error);
-  test.errors = test.errors.concat(errors);
+  if (isExpectingAssertions && test.errors.length > 0) {
+    // Only show errors from `expect.hasAssertions()` when no other failure has happened.
+    return;
+  }
+  test.errors.push(...failures.map(failure => failure.error));
 };
 
 // Get suppressed errors from ``jest-matchers`` that weren't throw during
@@ -261,7 +385,7 @@ const _addExpectedAssertionErrors = (test: Circus.TestEntry) => {
 const _addSuppressedErrors = (test: Circus.TestEntry) => {
   const {suppressedErrors} = jestExpect.getState();
   jestExpect.setState({suppressedErrors: []});
-  if (suppressedErrors.length) {
-    test.errors = test.errors.concat(suppressedErrors);
+  if (suppressedErrors.length > 0) {
+    test.errors.push(...suppressedErrors);
   }
 };

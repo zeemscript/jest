@@ -5,18 +5,20 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
+import * as path from 'node:path';
 import co from 'co';
 import dedent from 'dedent';
 import isGeneratorFn from 'is-generator-fn';
-import slash = require('slash');
-import StackUtils = require('stack-utils');
-import type {AssertionResult, Status} from '@jest/test-result';
+import slash from 'slash';
+import StackUtils from 'stack-utils';
+import type {Status, TestCaseResult} from '@jest/test-result';
 import type {Circus, Global} from '@jest/types';
+import {flattenErrorStack} from 'jest-message-util';
 import {
   ErrorWithStack,
   convertDescriptorToString,
   formatTime,
+  invariant,
   isPromise,
 } from 'jest-util';
 import {format as prettyFormat} from 'pretty-format';
@@ -85,6 +87,7 @@ export const makeTest = (
   startedAt: null,
   status: null,
   timeout,
+  unhandledRejectionErrorByPromise: new Map(),
 });
 
 // Traverse the tree of describe blocks and return true if at least one describe
@@ -159,7 +162,7 @@ export const getEachHooksForTest = (test: Circus.TestEntry): TestHooks => {
     }
     // 'beforeEach' hooks are executed from top to bottom, the opposite of the
     // way we traversed it.
-    result.beforeEach = [...beforeEachForCurrentBlock, ...result.beforeEach];
+    result.beforeEach.unshift(...beforeEachForCurrentBlock);
   } while ((block = block.parent));
   return result;
 };
@@ -227,7 +230,7 @@ export const callAsyncCircusFn = (
           }
           reject(errorAtDone);
           throw errorAtDone;
-        } else {
+        } else if (!completed) {
           testOrHook.seenDone = true;
         }
 
@@ -235,9 +238,9 @@ export const callAsyncCircusFn = (
         Promise.resolve().then(() => {
           if (returnedValue !== undefined) {
             asyncError.message = dedent`
-      Test functions cannot both take a 'done' callback and return something. Either use a 'done' callback, or return a promise.
-      Returned value: ${prettyFormat(returnedValue, {maxDepth: 3})}
-      `;
+              Test functions cannot both take a 'done' callback and return something. Either use a 'done' callback, or return a promise.
+              Returned value: ${prettyFormat(returnedValue, {maxDepth: 3})}
+            `;
             return reject(asyncError);
           }
 
@@ -269,7 +272,7 @@ export const callAsyncCircusFn = (
 
     let returnedValue: Global.TestReturnValue;
     if (isGeneratorFunction(fn)) {
-      returnedValue = co.wrap(fn).call({});
+      returnedValue = co.wrap(fn).call(testContext);
     } else {
       try {
         returnedValue = fn.call(testContext);
@@ -288,9 +291,9 @@ export const callAsyncCircusFn = (
       reject(
         new Error(
           dedent`
-      test functions can only return Promise or undefined.
-      Returned value: ${prettyFormat(returnedValue, {maxDepth: 3})}
-      `,
+            test functions can only return Promise or undefined.
+            Returned value: ${prettyFormat(returnedValue, {maxDepth: 3})}
+          `,
         ),
       );
       return;
@@ -299,20 +302,13 @@ export const callAsyncCircusFn = (
     // Otherwise this test is synchronous, and if it didn't throw it means
     // it passed.
     resolve();
-  })
-    .then(() => {
-      completed = true;
-      // If timeout is not cleared/unrefed the node process won't exit until
-      // it's resolved.
-      timeoutID.unref?.();
-      clearTimeout(timeoutID);
-    })
-    .catch(error => {
-      completed = true;
-      timeoutID.unref?.();
-      clearTimeout(timeoutID);
-      throw error;
-    });
+  }).finally(() => {
+    completed = true;
+    // If timeout is not cleared/unrefed the node process won't exit until
+    // it's resolved.
+    timeoutID.unref?.();
+    clearTimeout(timeoutID);
+  });
 };
 
 export const getTestDuration = (test: Circus.TestEntry): number | null => {
@@ -323,10 +319,15 @@ export const getTestDuration = (test: Circus.TestEntry): number | null => {
 export const makeRunResult = (
   describeBlock: Circus.DescribeBlock,
   unhandledErrors: Array<Error>,
-): Circus.RunResult => ({
-  testResults: makeTestResults(describeBlock),
-  unhandledErrors: unhandledErrors.map(_getError).map(getErrorStack),
-});
+): Circus.RunResult => {
+  const unhandledErrorsDetailed = unhandledErrors.map(_getError);
+
+  return {
+    testResults: makeTestResults(describeBlock),
+    unhandledErrors: unhandledErrorsDetailed.map(flattenErrorStack),
+    unhandledErrorsDetailed,
+  };
+};
 
 const getTestNamesPath = (test: Circus.TestEntry): Circus.TestNamesPath => {
   const titles = [];
@@ -354,7 +355,7 @@ export const makeSingleTestResult = (
     const stackLine = stackLines[1];
     let parsedLine = stackUtils.parseLine(stackLine);
     if (parsedLine?.file?.startsWith(jestEachBuildDir)) {
-      const stackLine = stackLines[4];
+      const stackLine = stackLines[2];
       parsedLine = stackUtils.parseLine(stackLine);
     }
     if (
@@ -370,34 +371,42 @@ export const makeSingleTestResult = (
   }
 
   const errorsDetailed = test.errors.map(_getError);
+  const retryReasonsDetailed = test.retryReasons.map(_getError);
 
   return {
     duration: test.duration,
-    errors: errorsDetailed.map(getErrorStack),
+    errors: errorsDetailed.map(flattenErrorStack),
     errorsDetailed,
+    failing: test.failing,
     invocations: test.invocations,
     location,
     numPassingAsserts: test.numPassingAsserts,
-    retryReasons: test.retryReasons.map(_getError).map(getErrorStack),
+    retryReasons: retryReasonsDetailed.map(flattenErrorStack),
+    retryReasonsDetailed,
+    startedAt: test.startedAt,
     status,
-    testPath: Array.from(testPath),
+    testPath: [...testPath],
   };
 };
 
 const makeTestResults = (
   describeBlock: Circus.DescribeBlock,
 ): Circus.TestResults => {
-  const testResults: Circus.TestResults = [];
+  const testResults = [];
+  const stack: [[Circus.DescribeBlock, number]] = [[describeBlock, 0]];
 
-  for (const child of describeBlock.children) {
-    switch (child.type) {
-      case 'describeBlock': {
-        testResults.push(...makeTestResults(child));
+  while (stack.length > 0) {
+    const [currentBlock, childIndex] = stack.pop()!;
+
+    for (let i = childIndex; i < currentBlock.children.length; i++) {
+      const child = currentBlock.children[i];
+
+      if (child.type === 'describeBlock') {
+        stack.push([currentBlock, i + 1], [child, 0]);
         break;
       }
-      case 'test': {
+      if (child.type === 'test') {
         testResults.push(makeSingleTestResult(child));
-        break;
       }
     }
   }
@@ -407,10 +416,19 @@ const makeTestResults = (
 
 // Return a string that identifies the test (concat of parent describe block
 // names + test title)
+const testIds = new WeakMap<Circus.TestEntry, string>();
+
 export const getTestID = (test: Circus.TestEntry): string => {
+  const cachedTestId = testIds.get(test);
+  if (cachedTestId !== undefined) {
+    return cachedTestId;
+  }
+
   const testNamesPath = getTestNamesPath(test);
   testNamesPath.shift(); // remove TOP_DESCRIBE_BLOCK_NAME
-  return testNamesPath.join(' ');
+  const testId = testNamesPath.join(' ');
+  testIds.set(test, testId);
+  return testId;
 };
 
 const _getError = (
@@ -424,6 +442,7 @@ const _getError = (
     asyncError = errors[1];
   } else {
     error = errors;
+    // eslint-disable-next-line unicorn/error-message
     asyncError = new Error();
   }
 
@@ -431,18 +450,18 @@ const _getError = (
     return error;
   }
 
-  asyncError.message = `thrown: ${prettyFormat(error, {maxDepth: 3})}`;
+  if (asyncError) {
+    const message = `thrown: ${prettyFormat(error, {maxDepth: 3})}`;
+    return new Error(message, {cause: asyncError});
+  }
 
-  return asyncError;
+  return new Error(`thrown: ${prettyFormat(error, {maxDepth: 3})}`);
 };
-
-const getErrorStack = (error: Error): string =>
-  typeof error.stack === 'string' ? error.stack : error.message;
 
 export const addErrorToEachTestUnderDescribe = (
   describeBlock: Circus.DescribeBlock,
   error: Circus.Exception,
-  asyncError: Circus.Exception,
+  asyncError?: Circus.Exception,
 ): void => {
   for (const child of describeBlock.children) {
     switch (child.type) {
@@ -450,20 +469,11 @@ export const addErrorToEachTestUnderDescribe = (
         addErrorToEachTestUnderDescribe(child, error, asyncError);
         break;
       case 'test':
-        child.errors.push([error, asyncError]);
+        child.errors.push(asyncError ? [error, asyncError] : error);
         break;
     }
   }
 };
-
-export function invariant(
-  condition: unknown,
-  message?: string,
-): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
 
 type TestDescription = {
   ancestorTitles: Array<string>;
@@ -478,7 +488,7 @@ const resolveTestCaseStartInfo = (
     name => name !== ROOT_DESCRIBE_BLOCK_NAME,
   );
   const fullName = ancestorTitles.join(' ');
-  const title = testNamesPath[testNamesPath.length - 1];
+  const title = testNamesPath.at(-1)!;
   // remove title
   ancestorTitles.pop();
   return {
@@ -490,7 +500,8 @@ const resolveTestCaseStartInfo = (
 
 export const parseSingleTestResult = (
   testResult: Circus.TestResult,
-): AssertionResult => {
+  formatRetryError?: (error: Error) => string,
+): TestCaseResult => {
   let status: Status;
   if (testResult.status === 'skip') {
     status = 'pending';
@@ -509,13 +520,18 @@ export const parseSingleTestResult = (
   return {
     ancestorTitles,
     duration: testResult.duration,
+    failing: testResult.failing,
     failureDetails: testResult.errorsDetailed,
-    failureMessages: Array.from(testResult.errors),
+    failureMessages: [...testResult.errors],
     fullName,
     invocations: testResult.invocations,
     location: testResult.location,
     numPassingAsserts: testResult.numPassingAsserts,
-    retryReasons: Array.from(testResult.retryReasons),
+    retryMessages: formatRetryError
+      ? testResult.retryReasonsDetailed.map(formatRetryError)
+      : undefined,
+    retryReasons: [...testResult.retryReasons],
+    startedAt: testResult.startedAt,
     status,
     title,
   };

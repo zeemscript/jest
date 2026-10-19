@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {expectError, expectType} from 'tsd-lite';
+import {expect} from 'tstyche';
 import {describe, test} from '@jest/globals';
 
 const list = [1, 2, 3];
@@ -27,133 +27,158 @@ const objectTable = [
 
 // test.each
 
-expectType<void>(
+expect(
   test.each(list)('some test', (a, done) => {
-    expectType<number>(a);
+    expect(a).type.toBe<number>();
 
-    expectType<(reason?: string | Error) => void>(done);
+    expect(done).type.toBe<(reason?: string | Error) => void>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each(list)(
     'some test',
     a => {
-      expectType<number>(a);
+      expect(a).type.toBe<number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each(tupleList)('some test', (b, done) => {
-    expectType<'one' | 'two' | 'three'>(b);
+    expect(b).type.toBe<'one' | 'two' | 'three'>();
 
-    expectType<(reason?: string | Error) => void>(done);
+    expect(done).type.toBe<(reason?: string | Error) => void>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each(tupleList)(
     'some test',
     b => {
-      expectType<'one' | 'two' | 'three'>(b);
+      expect(b).type.toBe<'one' | 'two' | 'three'>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each([3, 4, 'seven'])('some test', (c, done) => {
-    expectType<string | number>(c);
+    expect(c).type.toBe<string | number>();
 
-    expectType<(reason?: string | Error) => void>(done);
+    expect(done).type.toBe<(reason?: string | Error) => void>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each([3, 4, 'seven'])(
     'some test',
     c => {
-      expectType<string | number>(c);
+      expect(c).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each(table)('some test', (a, b, expected) => {
-    expectType<string | number>(a);
-    expectType<string | number>(b);
-    expectType<string | number>(expected);
+    expect(a).type.toBe<string | number>();
+    expect(b).type.toBe<string | number>();
+    expect(expected).type.toBe<string | number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each(table)(
     'some test',
     (a, b, expected) => {
-      expectType<string | number>(a);
-      expectType<string | number>(b);
-      expectType<string | number>(expected);
+      expect(a).type.toBe<string | number>();
+      expect(b).type.toBe<string | number>();
+      expect(expected).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each(tupleTable)('some test', (a, b, expected, extra) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
-    expectType<boolean | undefined>(extra);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
+    expect(extra).type.toBe<boolean | undefined>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each(tupleTable)(
     'some test',
     (a, b, expected, extra) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each([
     [1, 2, 'three'],
     [3, 4, 'seven'],
   ])('some test', (a, b, expected) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each([
     [1, 2, 'three'],
     [3, 4, 'seven'],
   ])(
     'some test',
     (a, b, expected) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
-  test.each(objectTable)('some test', ({a, b, expected, extra}, done) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
-    expectType<boolean | undefined>(extra);
-
-    expectType<(reason?: string | Error) => void>(done);
+expect(
+  test.each([
+    [1, 2, 'three'],
+    [3, 4, 'seven'],
+  ] as const)('some test', (a, b, expected) => {
+    expect(a).type.toBe<1 | 3>();
+    expect(b).type.toBe<2 | 4>();
+    expect(expected).type.toBe<'three' | 'seven'>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
+  test.each([
+    [1, 2, 'three'],
+    [3, 4, 'seven'],
+  ] as const)(
+    'some test',
+    (a, b, expected) => {
+      expect(a).type.toBe<1 | 3>();
+      expect(b).type.toBe<2 | 4>();
+      expect(expected).type.toBe<'three' | 'seven'>();
+    },
+    1000,
+  ),
+).type.toBe<void>();
+
+expect(
+  test.each(objectTable)('some test', ({a, b, expected, extra}, done) => {
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
+    expect(extra).type.toBe<boolean | undefined>();
+
+    expect(done).type.toBe<(reason?: string | Error) => void>();
+  }),
+).type.toBe<void>();
+expect(
   test.each([
     {a: 1, b: 2, expected: 'three', extra: true},
     {a: 3, b: 4, expected: 'seven', extra: false},
@@ -161,54 +186,54 @@ expectType<void>(
   ])(
     'some test',
     ({a, b, expected, extra}, done) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
 
-      expectType<(reason?: string | Error) => void>(done);
+      expect(done).type.toBe<(reason?: string | Error) => void>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
     ${1} | ${2} | ${3}
     ${2} | ${1} | ${3}
   `('some test', ({a, b, expected}, done) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<number>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<number>();
 
-    expectType<(reason?: string | Error) => void>(done);
+    expect(done).type.toBe<(reason?: string | Error) => void>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each`
     item   | expected
     ${'a'} | ${true}
     ${'b'} | ${false}
   `('some test', ({item, expected}) => {
-    expectType<unknown>(item);
-    expectType<unknown>(expected);
+    expect(item).type.toBe<string | boolean>();
+    expect(expected).type.toBe<string | boolean>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each<{item: string; expected: boolean}>`
     item   | expected
     ${'a'} | ${true}
     ${'b'} | ${false}
   `('some test', ({item, expected}, done) => {
-    expectType<string>(item);
-    expectType<boolean>(expected);
+    expect(item).type.toBe<string>();
+    expect(expected).type.toBe<boolean>();
 
-    expectType<(reason?: string | Error) => void>(done);
+    expect(done).type.toBe<(reason?: string | Error) => void>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
@@ -217,14 +242,14 @@ expectType<void>(
   `(
     'some test',
     ({a, b, expected}) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<number>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<number>();
     },
     1000,
   ),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each`
     item   | expected
     ${'a'} | ${true}
@@ -232,13 +257,13 @@ expectType<void>(
   `(
     'some test',
     ({item, expected}) => {
-      expectType<unknown>(item);
-      expectType<unknown>(expected);
+      expect(item).type.toBe<string | boolean>();
+      expect(expected).type.toBe<string | boolean>();
     },
     1000,
   ),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each<{item: string; expected: boolean}>`
     item   | expected
     ${'a'} | ${true}
@@ -246,143 +271,143 @@ expectType<void>(
   `(
     'some test',
     ({item, expected}) => {
-      expectType<string>(item);
-      expectType<boolean>(expected);
+      expect(item).type.toBe<string>();
+      expect(expected).type.toBe<boolean>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectError(test.each());
-expectError(test.each('abc'));
-expectError(test.each(() => {}));
+expect(test.each).type.not.toBeCallableWith();
+expect(test.each).type.not.toBeCallableWith('abc');
+expect(test.each).type.not.toBeCallableWith(() => {});
 
-expectType<typeof test.each>(test.only.each);
-expectType<typeof test.each>(test.skip.each);
+expect(test.only.each).type.toBe(test.each);
+expect(test.skip.each).type.toBe(test.each);
 
 // test.concurrent.each
 
-expectType<void>(
+expect(
   test.concurrent.each(list)('some test', async a => {
-    expectType<number>(a);
+    expect(a).type.toBe<number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each(list)(
     'some test',
     async a => {
-      expectType<number>(a);
+      expect(a).type.toBe<number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.concurrent.each(tupleList)('some test', async b => {
-    expectType<'one' | 'two' | 'three'>(b);
+    expect(b).type.toBe<'one' | 'two' | 'three'>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each(tupleList)(
     'some test',
     async b => {
-      expectType<'one' | 'two' | 'three'>(b);
+      expect(b).type.toBe<'one' | 'two' | 'three'>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.concurrent.each([3, 4, 'seven'])('some test', async c => {
-    expectType<string | number>(c);
+    expect(c).type.toBe<string | number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each([3, 4, 'seven'])(
     'some test',
     async c => {
-      expectType<string | number>(c);
+      expect(c).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.concurrent.each(table)('some test', async (a, b, expected) => {
-    expectType<string | number>(a);
-    expectType<string | number>(b);
-    expectType<string | number>(expected);
+    expect(a).type.toBe<string | number>();
+    expect(b).type.toBe<string | number>();
+    expect(expected).type.toBe<string | number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each(table)(
     'some test',
     async (a, b, expected) => {
-      expectType<string | number>(a);
-      expectType<string | number>(b);
-      expectType<string | number>(expected);
+      expect(a).type.toBe<string | number>();
+      expect(b).type.toBe<string | number>();
+      expect(expected).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.concurrent.each(tupleTable)(
     'some test',
     async (a, b, expected, extra) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
     },
   ),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each(tupleTable)(
     'some test',
     async (a, b, expected, extra) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.concurrent.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
     ${1} | ${2} | ${3}
     ${2} | ${1} | ${3}
   `('some test', async ({a, b, expected}) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<number>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each`
     item   | expected
     ${'a'} | ${true}
     ${'b'} | ${false}
   `('some test', async ({item, expected}) => {
-    expectType<unknown>(item);
-    expectType<unknown>(expected);
+    expect(item).type.toBe<string | boolean>();
+    expect(expected).type.toBe<string | boolean>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each<{item: string; expected: boolean}>`
     item   | expected
     ${'a'} | ${true}
     ${'b'} | ${false}
   `('some test', async ({item, expected}) => {
-    expectType<string>(item);
-    expectType<boolean>(expected);
+    expect(item).type.toBe<string>();
+    expect(expected).type.toBe<boolean>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.concurrent.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
@@ -391,15 +416,15 @@ expectType<void>(
   `(
     'some test',
     async ({a, b, expected}) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<number>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   test.each`
     item   | expected
     ${'a'} | ${true}
@@ -407,13 +432,13 @@ expectType<void>(
   `(
     'some test',
     ({item, expected}) => {
-      expectType<unknown>(item);
-      expectType<unknown>(expected);
+      expect(item).type.toBe<string | boolean>();
+      expect(expected).type.toBe<string | boolean>();
     },
     1000,
   ),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   test.each<{item: string; expected: boolean}>`
     item   | expected
     ${'a'} | ${true}
@@ -421,141 +446,166 @@ expectType<void>(
   `(
     'some test',
     ({item, expected}) => {
-      expectType<string>(item);
-      expectType<boolean>(expected);
+      expect(item).type.toBe<string>();
+      expect(expected).type.toBe<boolean>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectError(test.concurrent.each());
-expectError(test.concurrent.each('abc'));
-expectError(test.concurrent.each(() => {}));
+expect(test.concurrent.each).type.not.toBeCallableWith();
+expect(test.concurrent.each).type.not.toBeCallableWith('abc');
+expect(test.concurrent.each).type.not.toBeCallableWith(() => {});
 
-expectType<typeof test.concurrent.each>(test.concurrent.only.each);
-expectType<typeof test.concurrent.each>(test.concurrent.skip.each);
+expect(test.concurrent.only.each).type.toBe(test.concurrent.each);
+expect(test.concurrent.skip.each).type.toBe(test.concurrent.each);
 
 // describe.each
 
-expectType<void>(
+expect(
   describe.each(list)('describe each', a => {
-    expectType<number>(a);
+    expect(a).type.toBe<number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each(list)(
     'describe each',
     a => {
-      expectType<number>(a);
+      expect(a).type.toBe<number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each(tupleList)('describe each', b => {
-    expectType<'one' | 'two' | 'three'>(b);
+    expect(b).type.toBe<'one' | 'two' | 'three'>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each(tupleList)(
     'describe each',
     b => {
-      expectType<'one' | 'two' | 'three'>(b);
+      expect(b).type.toBe<'one' | 'two' | 'three'>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each([3, 4, 'seven'])('describe each', c => {
-    expectType<string | number>(c);
+    expect(c).type.toBe<string | number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each([3, 4, 'seven'])(
     'describe each',
     c => {
-      expectType<string | number>(c);
+      expect(c).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each(table)('describe each', (a, b, expected) => {
-    expectType<string | number>(a);
-    expectType<string | number>(b);
-    expectType<string | number>(expected);
+    expect(a).type.toBe<string | number>();
+    expect(b).type.toBe<string | number>();
+    expect(expected).type.toBe<string | number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each(table)(
     'describe each',
     (a, b, expected) => {
-      expectType<string | number>(a);
-      expectType<string | number>(b);
-      expectType<string | number>(expected);
+      expect(a).type.toBe<string | number>();
+      expect(b).type.toBe<string | number>();
+      expect(expected).type.toBe<string | number>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each(tupleTable)('describe each', (a, b, expected, extra) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
-    expectType<boolean | undefined>(extra);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
+    expect(extra).type.toBe<boolean | undefined>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each(tupleTable)(
     'describe each',
     (a, b, expected, extra) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each([
     [1, 2, 'three'],
     [3, 4, 'seven'],
   ])('describe each', (a, b, expected) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each([
     [1, 2, 'three'],
     [3, 4, 'seven'],
   ])(
     'describe each',
     (a, b, expected) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
-  describe.each(objectTable)('describe each', ({a, b, expected, extra}) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
-    expectType<boolean | undefined>(extra);
+expect(
+  describe.each([
+    [1, 2, 'three'],
+    [3, 4, 'seven'],
+  ] as const)('describe each', (a, b, expected) => {
+    expect(a).type.toBe<1 | 3>();
+    expect(b).type.toBe<2 | 4>();
+    expect(expected).type.toBe<'three' | 'seven'>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
+  describe.each([
+    [1, 2, 'three'],
+    [3, 4, 'seven'],
+  ] as const)(
+    'describe each',
+    (a, b, expected) => {
+      expect(a).type.toBe<1 | 3>();
+      expect(b).type.toBe<2 | 4>();
+      expect(expected).type.toBe<'three' | 'seven'>();
+    },
+    1000,
+  ),
+).type.toBe<void>();
+
+expect(
+  describe.each(objectTable)('describe each', ({a, b, expected, extra}) => {
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
+    expect(extra).type.toBe<boolean | undefined>();
+  }),
+).type.toBe<void>();
+expect(
   describe.each([
     {a: 1, b: 2, expected: 'three', extra: true},
     {a: 3, b: 4, expected: 'seven', extra: false},
@@ -563,28 +613,28 @@ expectType<void>(
   ])(
     'describe each',
     ({a, b, expected, extra}) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
-      expectType<boolean | undefined>(extra);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
+      expect(extra).type.toBe<boolean | undefined>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectType<void>(
+expect(
   describe.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
     ${1} | ${2} | ${3}
     ${2} | ${1} | ${3}
   `('describe each', ({a, b, expected}) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<number>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<number>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each<{
     a: number;
     b: number;
@@ -595,12 +645,12 @@ expectType<void>(
     ${1} | ${2} | ${3}
     ${2} | ${1} | ${3}
   `('describe each', ({a, b, expected}) => {
-    expectType<number>(a);
-    expectType<number>(b);
-    expectType<string>(expected);
+    expect(a).type.toBe<number>();
+    expect(b).type.toBe<number>();
+    expect(expected).type.toBe<string>();
   }),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each`
     a    | b    | expected
     ${1} | ${1} | ${2}
@@ -609,14 +659,14 @@ expectType<void>(
   `(
     'describe each',
     ({a, b, expected}) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<number>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<number>();
     },
     1000,
   ),
-);
-expectType<void>(
+).type.toBe<void>();
+expect(
   describe.each<{
     a: number;
     b: number;
@@ -629,17 +679,17 @@ expectType<void>(
   `(
     'describe each',
     ({a, b, expected}) => {
-      expectType<number>(a);
-      expectType<number>(b);
-      expectType<string>(expected);
+      expect(a).type.toBe<number>();
+      expect(b).type.toBe<number>();
+      expect(expected).type.toBe<string>();
     },
     1000,
   ),
-);
+).type.toBe<void>();
 
-expectError(describe.each());
-expectError(describe.each('abc'));
-expectError(describe.each(() => {}));
+expect(describe.each).type.not.toBeCallableWith();
+expect(describe.each).type.not.toBeCallableWith('abc');
+expect(describe.each).type.not.toBeCallableWith(() => {});
 
-expectType<typeof describe.each>(describe.only.each);
-expectType<typeof describe.each>(describe.skip.each);
+expect(describe.only.each).type.toBe(describe.each);
+expect(describe.skip.each).type.toBe(describe.each);

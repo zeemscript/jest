@@ -5,10 +5,33 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {expectType} from 'tsd-lite';
-import type {Config as ConfigTypes} from '@jest/types';
-import type {Config} from 'jest';
+import {describe, expect, test} from 'tstyche';
+import type {
+  Config,
+  GlobalConfig as ExportedGlobalConfig,
+  ProjectConfig as ExportedProjectConfig,
+} from 'jest';
 
-declare const config: Config;
+describe('Config', () => {
+  test('is a reexport of the `InitialOptions`', () => {
+    type InitialOptions = import('@jest/types').Config.InitialOptions;
 
-expectType<ConfigTypes.InitialOptions>(config);
+    expect<Config>().type.toBe<InitialOptions>();
+  });
+});
+
+describe('ExportedGlobalConfig', () => {
+  test('is a reexport of the `GlobalConfig`', () => {
+    type GlobalConfig = import('@jest/types').Config.GlobalConfig;
+
+    expect<ExportedGlobalConfig>().type.toBe<GlobalConfig>();
+  });
+});
+
+describe('ExportedProjectConfig', () => {
+  test('is a reexport of the `ProjectConfig`', () => {
+    type ProjectConfig = import('@jest/types').Config.ProjectConfig;
+
+    expect<ExportedProjectConfig>().type.toBe<ProjectConfig>();
+  });
+});

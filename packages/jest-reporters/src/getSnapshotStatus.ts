@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
+import chalk from 'chalk';
 import type {TestResult} from '@jest/test-result';
 import {pluralize} from 'jest-util';
 
@@ -61,9 +61,9 @@ export default function getSnapshotStatus(
       );
     }
 
-    snapshot.uncheckedKeys.forEach(key => {
+    for (const key of snapshot.uncheckedKeys) {
       statuses.push(`  ${DOT}${key}`);
-    });
+    }
   }
 
   if (snapshot.fileDeleted) {

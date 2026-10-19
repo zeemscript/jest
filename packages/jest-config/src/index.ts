@@ -5,8 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as path from 'path';
-import chalk = require('chalk');
+import * as path from 'node:path';
+import chalk from 'chalk';
+import deepMerge from 'deepmerge';
 import * as fs from 'graceful-fs';
 import type {Config} from '@jest/types';
 import {tryRealpath} from 'jest-util';
@@ -31,6 +32,51 @@ type ReadConfig = {
   projectConfig: Config.ProjectConfig;
 };
 
+type JestTestConfigObject = Config.InitialOptions;
+
+type UserConfigFnObject = () => JestTestConfigObject;
+type UserConfigFnPromise = () => Promise<JestTestConfigObject>;
+type UserConfigFn = () => JestTestConfigObject | Promise<JestTestConfigObject>;
+type UserConfigExport =
+  | JestTestConfigObject
+  | Promise<JestTestConfigObject>
+  | UserConfigFnObject
+  | UserConfigFnPromise
+  | UserConfigFn;
+
+/**
+ * Type helper to make it easier to use Jest config accepts a direct JestTestConfigObject object, or a function that returns it. The function receives a JestTestConfigObject object.
+ */
+export function defineConfig(
+  config: JestTestConfigObject,
+): JestTestConfigObject;
+export function defineConfig(
+  config: Promise<JestTestConfigObject>,
+): Promise<JestTestConfigObject>;
+export function defineConfig(config: UserConfigFnObject): UserConfigFnObject;
+export function defineConfig(config: UserConfigFnPromise): UserConfigFnPromise;
+export function defineConfig(config: UserConfigFn): UserConfigFn;
+export function defineConfig(config: UserConfigExport): UserConfigExport {
+  return config;
+}
+
+/**
+ * Merges two configuration objects, where the second object takes precedence over the first one.
+ */
+export function mergeConfig<
+  D extends UserConfigExport,
+  O extends UserConfigExport,
+>(
+  defaults: D extends Function ? never : D,
+  overrides: O extends Function ? never : O,
+): JestTestConfigObject {
+  if (typeof defaults === 'function' || typeof overrides === 'function') {
+    throw new TypeError('Cannot merge config in form of callback');
+  }
+
+  return deepMerge.all([defaults, overrides]);
+}
+
 export async function readConfig(
   argv: Config.Argv,
   packageRootOrConfig: string | Config.InitialOptions,
@@ -40,8 +86,11 @@ export async function readConfig(
   // read individual configs for every project.
   skipArgvConfigOption?: boolean,
   parentConfigDirname?: string | null,
-  projectIndex = Infinity,
+  projectIndex = Number.POSITIVE_INFINITY,
   skipMultipleConfigError = false,
+  // Whether this config is read only as a project. `readConfigs` decides it,
+  // as it is the only place that knows which config supplies the global config.
+  isProjectOptions = false,
 ): Promise<ReadConfig> {
   const {config: initialOptions, configPath} = await readInitialOptions(
     argv.config,
@@ -53,16 +102,12 @@ export async function readConfig(
     },
   );
 
-  const packageRoot =
-    typeof packageRootOrConfig === 'string'
-      ? path.resolve(packageRootOrConfig)
-      : undefined;
   const {options, hasDeprecationWarnings} = await normalize(
     initialOptions,
     argv,
     configPath,
     projectIndex,
-    skipArgvConfigOption && !(packageRoot === parentConfigDirname),
+    isProjectOptions,
   );
 
   const {globalConfig, projectConfig} = groupOptions(options);
@@ -87,6 +132,7 @@ const groupOptions = (
     ci: options.ci,
     collectCoverage: options.collectCoverage,
     collectCoverageFrom: options.collectCoverageFrom,
+    collectTests: options.collectTests,
     coverageDirectory: options.coverageDirectory,
     coverageProvider: options.coverageProvider,
     coverageReporters: options.coverageReporters,
@@ -121,6 +167,7 @@ const groupOptions = (
     replname: options.replname,
     reporters: options.reporters,
     rootDir: options.rootDir,
+    runInBand: options.runInBand,
     runTestsByPath: options.runTestsByPath,
     seed: options.seed,
     shard: options.shard,
@@ -130,17 +177,19 @@ const groupOptions = (
     snapshotFormat: options.snapshotFormat,
     testFailureExitCode: options.testFailureExitCode,
     testNamePattern: options.testNamePattern,
-    testPathPattern: options.testPathPattern,
+    testPathPatterns: options.testPathPatterns,
     testResultsProcessor: options.testResultsProcessor,
     testSequencer: options.testSequencer,
     testTimeout: options.testTimeout,
     updateSnapshot: options.updateSnapshot,
     useStderr: options.useStderr,
     verbose: options.verbose,
+    waitForUnhandledRejections: options.waitForUnhandledRejections,
     watch: options.watch,
     watchAll: options.watchAll,
     watchPlugins: options.watchPlugins,
     watchman: options.watchman,
+    workerGracefulExitTimeout: options.workerGracefulExitTimeout,
     workerIdleMemoryLimit: options.workerIdleMemoryLimit,
     workerThreads: options.workerThreads,
   }),
@@ -149,9 +198,11 @@ const groupOptions = (
     cache: options.cache,
     cacheDirectory: options.cacheDirectory,
     clearMocks: options.clearMocks,
+    collectCoverage: options.collectCoverage,
     collectCoverageFrom: options.collectCoverageFrom,
     coverageDirectory: options.coverageDirectory,
     coveragePathIgnorePatterns: options.coveragePathIgnorePatterns,
+    coverageProvider: options.coverageProvider,
     cwd: options.cwd,
     dependencyExtractor: options.dependencyExtractor,
     detectLeaks: options.detectLeaks,
@@ -182,10 +233,12 @@ const groupOptions = (
     rootDir: options.rootDir,
     roots: options.roots,
     runner: options.runner,
+    runnerOptions: options.runnerOptions,
     runtime: options.runtime,
     sandboxInjectedGlobals: options.sandboxInjectedGlobals,
     setupFiles: options.setupFiles,
     setupFilesAfterEnv: options.setupFilesAfterEnv,
+    silent: options.silent,
     skipFilter: options.skipFilter,
     skipNodeResolution: options.skipNodeResolution,
     slowTestThreshold: options.slowTestThreshold,
@@ -199,9 +252,12 @@ const groupOptions = (
     testPathIgnorePatterns: options.testPathIgnorePatterns,
     testRegex: options.testRegex,
     testRunner: options.testRunner,
+    testTimeout: options.testTimeout,
     transform: options.transform,
     transformIgnorePatterns: options.transformIgnorePatterns,
     unmockedModulePathPatterns: options.unmockedModulePathPatterns,
+    verbose: options.verbose,
+    waitForUnhandledRejections: options.waitForUnhandledRejections,
     watchPathIgnorePatterns: options.watchPathIgnorePatterns,
   }),
 });
@@ -224,9 +280,9 @@ const ensureNoDuplicateConfigs = (
         String(configPath),
       )}:
 
-  Project 1: ${chalk.bold(projects[parsedConfigs.findIndex(x => x === config)])}
+  Project 1: ${chalk.bold(projects[parsedConfigs.indexOf(config)])}
   Project 2: ${chalk.bold(
-    projects[parsedConfigs.findIndex(x => x === configPathMap.get(configPath))],
+    projects[parsedConfigs.indexOf(configPathMap.get(configPath))],
   )}
 
 This usually means that your ${chalk.bold(
@@ -343,7 +399,7 @@ export async function readConfigs(
   configs: Array<Config.ProjectConfig>;
   hasDeprecationWarnings: boolean;
 }> {
-  let globalConfig;
+  let globalConfig: Config.GlobalConfig | undefined;
   let hasDeprecationWarnings;
   let configs: Array<Config.ProjectConfig> = [];
   let projects = projectPaths;
@@ -356,13 +412,20 @@ export async function readConfigs(
     hasDeprecationWarnings = parsedConfig.hasDeprecationWarnings;
     globalConfig = parsedConfig.globalConfig;
     configs = [parsedConfig.projectConfig];
-    if (globalConfig.projects && globalConfig.projects.length) {
+    if (globalConfig.projects && globalConfig.projects.length > 0) {
       // Even though we had one project in CLI args, there might be more
       // projects defined in the config.
       // In other words, if this was a single project,
       // and its config has `projects` settings, use that value instead.
       projects = globalConfig.projects;
     }
+  } else if (projectPaths.length > 1 && argv.config) {
+    // Every per-project read below sets `skipArgvConfigOption`, so this is the
+    // only place `--config` is read for the global scope.
+    const parsedConfig = await readConfig(argv, process.cwd());
+    configPath = parsedConfig.configPath;
+    hasDeprecationWarnings = parsedConfig.hasDeprecationWarnings;
+    globalConfig = parsedConfig.globalConfig;
   }
 
   if (projects.length > 0) {
@@ -391,15 +454,26 @@ export async function readConfigs(
           const skipArgvConfigOption = !(
             projectIsTheOnlyProject && projectIsCwd
           );
+          const parentConfigDirname = configPath
+            ? path.dirname(configPath)
+            : cwd;
+          // The config that supplies the global config must not be validated
+          // as a project config - its global options are in the right place.
+          const suppliesGlobalConfig =
+            (globalConfig == null && projectIndex === 0) ||
+            (configPath != null &&
+              typeof root === 'string' &&
+              resolveConfigPath(root, cwd, projectIsCwd) === configPath);
 
           return readConfig(
             argv,
             root,
             skipArgvConfigOption,
-            configPath ? path.dirname(configPath) : cwd,
+            parentConfigDirname,
             projectIndex,
             // we wanna skip the warning if this is the "main" project
             projectIsCwd,
+            skipArgvConfigOption && !suppliesGlobalConfig,
           );
         }),
     );
@@ -412,12 +486,17 @@ export async function readConfigs(
       );
     }
     // If no config was passed initially, use the one from the first project
+    // TODO: In the next major, read the global config from `process.cwd()` when
+    // several projects are passed without `--config`, the way the `argv.config`
+    // branch above does, and drop this fallback. Today the first project
+    // doubles as the root config, so its global options apply to the whole run
+    // while the same options in the other projects are ignored.
     if (!globalConfig) {
       globalConfig = parsedConfigs[0].globalConfig;
     }
   }
 
-  if (!globalConfig || !configs.length) {
+  if (!globalConfig || configs.length === 0) {
     throw new Error('jest: No configuration found for any project.');
   }
 

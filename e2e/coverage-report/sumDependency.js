@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-require('path');
+require('node:path');
 
-// eslint-disable-next-line prefer-template
+// eslint-disable-next-line prefer-template, no-constant-condition
 const uncoveredFunction = () => (true ? 1 + '5' : '999');
 
 module.exports = {

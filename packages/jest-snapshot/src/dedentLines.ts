@@ -89,8 +89,7 @@ const dedentMarkup = (input: Array<string>, output: Array<string>): boolean => {
   }
 
   let isText = false;
-  const stack: Array<number> = [];
-  stack.push(getIndentationLength(line));
+  const stack = [getIndentationLength(line)];
 
   while (stack.length > 0 && output.length < input.length) {
     line = input[output.length];
@@ -114,7 +113,7 @@ const dedentMarkup = (input: Array<string>, output: Array<string>): boolean => {
         return false; // because text has more than one adjacent line
       }
 
-      const indentationLengthOfTag = stack[stack.length - 1];
+      const indentationLengthOfTag = stack.at(-1)!;
       output.push(line.slice(indentationLengthOfTag + 2));
       isText = true;
     }

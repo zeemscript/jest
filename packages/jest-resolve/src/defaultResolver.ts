@@ -5,82 +5,50 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {dirname, isAbsolute, resolve as pathResolve} from 'path';
-import pnpResolver from 'jest-pnp-resolver';
-import {SyncOpts as UpstreamResolveOptions, sync as resolveSync} from 'resolve';
-import * as resolve from 'resolve.exports';
+import {isBuiltin} from 'node:module';
 import {
-  findClosestPackageJson,
-  isDirectory,
-  isFile,
-  readPackageCached,
-  realpathSync,
+  type ResolveResult,
+  ResolverFactory,
+  type NapiResolveOptions as UpstreamResolveOptions,
+} from 'unrs-resolver';
+import {
+  getAnyResolver,
+  getResolver,
+  setResolver,
+  shouldPreserveSymlinks,
 } from './fileWalkers';
-import type {PackageJSON} from './types';
 
-/**
- * Allows transforming parsed `package.json` contents.
- *
- * @param pkg - Parsed `package.json` contents.
- * @param file - Path to `package.json` file.
- * @param dir - Directory that contains the `package.json`.
- *
- * @returns Transformed `package.json` contents.
- */
-export type PackageFilter = (
-  pkg: PackageJSON,
-  file: string,
-  dir: string,
-) => PackageJSON;
-
-/**
- * Allows transforming a path within a package.
- *
- * @param pkg - Parsed `package.json` contents.
- * @param path - Path being resolved.
- * @param relativePath - Path relative from the `package.json` location.
- *
- * @returns Relative path that will be joined from the `package.json` location.
- */
-export type PathFilter = (
-  pkg: PackageJSON,
-  path: string,
-  relativePath: string,
-) => string;
-
-export type ResolverOptions = {
+export interface ResolverOptions extends Omit<
+  UpstreamResolveOptions,
+  'extensions'
+> {
   /** Directory to begin resolving from. */
   basedir: string;
   /** List of export conditions. */
-  conditions?: Array<string>;
+  conditions?: ReadonlyArray<string>;
   /** Instance of default resolver. */
-  defaultResolver: typeof defaultResolver;
-  /** List of file extensions to search in order. */
-  extensions?: Array<string>;
+  defaultResolver: SyncResolver;
+  /** Instance of default async resolver. */
+  defaultAsyncResolver: AsyncResolver;
+  /** List of file extensions to be considered when resolving. */
+  extensions?: ReadonlyArray<string>;
   /**
    * List of directory names to be looked up for modules recursively.
    *
    * @defaultValue
    * The default is `['node_modules']`.
    */
-  moduleDirectory?: Array<string>;
+  moduleDirectory?: ReadonlyArray<string>;
   /**
    * List of `require.paths` to use if nothing is found in `node_modules`.
    *
    * @defaultValue
    * The default is `undefined`.
    */
-  paths?: Array<string>;
-  /** Allows transforming parsed `package.json` contents. */
-  packageFilter?: PackageFilter;
-  /** Allows transforms a path within a package. */
-  pathFilter?: PathFilter;
+  paths?: ReadonlyArray<string>;
   /** Current root directory. */
   rootDir?: string;
-};
-
-type UpstreamResolveOptionsWithConditions = UpstreamResolveOptions &
-  ResolverOptions;
+}
 
 export type SyncResolver = (path: string, options: ResolverOptions) => string;
 export type AsyncResolver = (
@@ -90,156 +58,190 @@ export type AsyncResolver = (
 
 export type Resolver = SyncResolver | AsyncResolver;
 
-const defaultResolver: SyncResolver = (path, options) => {
-  // Yarn 2 adds support to `resolve` automatically so the pnpResolver is only
-  // needed for Yarn 1 which implements version 1 of the pnp spec
-  if (process.versions.pnp === '1') {
-    return pnpResolver(path, options);
+const handleResolveResult = (result: ResolveResult) => {
+  if (result.error) {
+    throw new Error(result.error);
   }
-
-  const resolveOptions: UpstreamResolveOptionsWithConditions = {
-    ...options,
-    isDirectory,
-    isFile,
-    preserveSymlinks: false,
-    readPackageSync,
-    realpathSync,
-  };
-
-  const pathToResolve = getPathInModule(path, resolveOptions);
-
-  // resolveSync dereferences symlinks to ensure we don't create a separate
-  // module instance depending on how it was referenced.
-  const result = resolveSync(pathToResolve, resolveOptions);
-
-  return result;
+  return result.path!;
 };
 
-export default defaultResolver;
+const KEY_SEPARATOR = '\u0001';
+// Distinct from an empty array's join: for example `extensions: []` and
+// `extensions: undefined` configure the factory differently.
+const ABSENT = '\u0002';
 
-/*
- * helper functions
- */
+const arrayCacheKeys = new WeakMap<ReadonlyArray<string>, string>();
 
-function readPackageSync(_: unknown, file: string): PackageJSON {
-  return readPackageCached(file);
+// JSON escapes control characters, so no element can smuggle a
+// KEY_SEPARATOR or ABSENT byte into the composed key.
+function cacheKeyForArray(array: ReadonlyArray<string> | undefined): string {
+  if (array == null) {
+    return ABSENT;
+  }
+  let key = arrayCacheKeys.get(array);
+  if (key === undefined) {
+    key = JSON.stringify(array);
+    arrayCacheKeys.set(array, key);
+  }
+  return key;
 }
 
-function getPathInModule(
+function cacheKeyForValue(value: string | undefined): string {
+  return value == null ? ABSENT : JSON.stringify(value);
+}
+
+function resolverForOptions(
+  resolveOptions: UpstreamResolveOptions,
+  key = `json${KEY_SEPARATOR}${JSON.stringify(resolveOptions)}`,
+): ResolverFactory {
+  let resolver = getResolver(key);
+  if (!resolver) {
+    // Clone from an existing factory when there is one, so every options
+    // shape shares the same underlying fs cache.
+    const existingResolver = getAnyResolver();
+    resolver = existingResolver
+      ? existingResolver.cloneWithOptions(resolveOptions)
+      : new ResolverFactory(resolveOptions);
+    setResolver(key, resolver);
+  }
+  return resolver;
+}
+
+// The custom-resolver fall-through hooks ride along in the rest object but
+// are not factory options - only other passthrough keys disqualify the
+// fast key.
+function hasPassthroughOptions(rest: object): boolean {
+  for (const key in rest) {
+    if (key !== 'defaultAsyncResolver' && key !== 'defaultResolver') {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function baseResolver(
   path: string,
-  options: UpstreamResolveOptionsWithConditions,
-): string {
-  if (shouldIgnoreRequestForExports(path)) {
-    return path;
+  options: ResolverOptions,
+): ResolveResult;
+export function baseResolver(
+  path: string,
+  options: ResolverOptions,
+  async: true,
+): Promise<ResolveResult>;
+export function baseResolver(
+  path: string,
+  options: ResolverOptions,
+  async?: true,
+): ResolveResult | Promise<ResolveResult> {
+  // `builtins` in `unrs-resolver` is static which could be wrong at runtime.
+  if (isBuiltin(path)) {
+    return {path};
   }
 
-  if (path.startsWith('#')) {
-    const closestPackageJson = findClosestPackageJson(options.basedir);
+  const {
+    basedir,
+    conditions,
+    conditionNames,
+    extensions,
+    modules: modulesOption,
+    moduleDirectory,
+    paths,
+    roots,
+    rootDir,
+    ...rest
+  } = options;
 
-    if (!closestPackageJson) {
-      throw new Error(
-        `Jest: unable to locate closest package.json from ${options.basedir} when resolving import "${path}"`,
-      );
-    }
+  const modules = modulesOption || (moduleDirectory as Array<string>);
 
-    const pkg = readPackageCached(closestPackageJson);
-
-    const resolved = resolve.imports(
-      pkg,
-      path as resolve.Imports.Entry,
-      createResolveOptions(options.conditions),
+  // Options without passthrough keys are fully described by a handful of
+  // long-lived arrays and scalars, so the factory key composes from
+  // per-array cached strings instead of serializing the whole object. The
+  // preserve-symlinks setting is constant per resolver-cache generation, so
+  // it needs no key part.
+  let fastKey: string | undefined;
+  if (!hasPassthroughOptions(rest)) {
+    const conditionsKey = cacheKeyForArray(
+      conditionNames || (conditions as Array<string> | undefined),
     );
-
-    if (resolved) {
-      const target = resolved[0];
-      return target.startsWith('.')
-        ? // internal relative filepath
-          pathResolve(dirname(closestPackageJson), target)
-        : // this is an external module, re-resolve it
-          defaultResolver(target, options);
-    }
-
-    if (pkg.imports) {
-      throw new Error(
-        '`imports` exists, but no results - this is a bug in Jest. Please report an issue',
-      );
-    }
+    const extensionsKey = cacheKeyForArray(extensions);
+    const modulesKey = Array.isArray(modules)
+      ? cacheKeyForArray(modules)
+      : cacheKeyForValue(modules);
+    const rootsKey = roots
+      ? cacheKeyForArray(roots)
+      : cacheKeyForValue(rootDir);
+    fastKey = ['fast', conditionsKey, extensionsKey, modulesKey, rootsKey].join(
+      KEY_SEPARATOR,
+    );
   }
 
-  const segments = path.split('/');
-
-  let moduleName = segments.shift();
-
-  if (moduleName) {
-    if (moduleName.startsWith('@')) {
-      moduleName = `${moduleName}/${segments.shift()}`;
-    }
-
-    // self-reference
-    const closestPackageJson = findClosestPackageJson(options.basedir);
-    if (closestPackageJson) {
-      const pkg = readPackageCached(closestPackageJson);
-
-      if (pkg.name === moduleName) {
-        const resolved = resolve.exports(
-          pkg,
-          (segments.join('/') || '.') as resolve.Exports.Entry,
-          createResolveOptions(options.conditions),
-        );
-
-        if (resolved) {
-          return pathResolve(dirname(closestPackageJson), resolved[0]);
-        }
-
-        if (pkg.exports) {
-          throw new Error(
-            '`exports` exists, but no results - this is a bug in Jest. Please report an issue',
-          );
-        }
-      }
-    }
-
-    let packageJsonPath = '';
-
-    try {
-      packageJsonPath = resolveSync(`${moduleName}/package.json`, options);
-    } catch {
-      // ignore if package.json cannot be found
-    }
-
-    if (packageJsonPath && isFile(packageJsonPath)) {
-      const pkg = readPackageCached(packageJsonPath);
-
-      const resolved = resolve.exports(
-        pkg,
-        (segments.join('/') || '.') as resolve.Exports.Entry,
-        createResolveOptions(options.conditions),
-      );
-
-      if (resolved) {
-        return pathResolve(dirname(packageJsonPath), resolved[0]);
-      }
-
-      if (pkg.exports) {
-        throw new Error(
-          '`exports` exists, but no results - this is a bug in Jest. Please report an issue',
-        );
-      }
-    }
+  // Only built when no cached factory serves the fast key.
+  let resolveOptions: UpstreamResolveOptions | undefined;
+  function getResolveOptions(): UpstreamResolveOptions {
+    resolveOptions ??= {
+      conditionNames: conditionNames ||
+        (conditions as Array<string> | undefined) || [
+          'require',
+          'node',
+          'default',
+        ],
+      extensions: extensions as Array<string> | undefined,
+      modules,
+      roots: roots || (rootDir ? [rootDir] : undefined),
+      // Honor Node's `--preserve-symlinks`; `unrs-resolver` realpaths by
+      // default. An explicit `symlinks` option still wins via `...rest`.
+      ...(shouldPreserveSymlinks() ? {symlinks: false} : {}),
+      ...rest,
+    };
+    return resolveOptions;
   }
 
-  return path;
+  let unrsResolver = fastKey == null ? undefined : getResolver(fastKey);
+  unrsResolver ??= resolverForOptions(getResolveOptions(), fastKey);
+
+  function attemptResolve(): ResolveResult | Promise<ResolveResult> {
+    return async
+      ? unrsResolver!.async(basedir, path)
+      : unrsResolver!.sync(basedir, path);
+  }
+
+  // `require.paths` semantics: when nothing resolves in the regular module
+  // directories, retry with the caller-provided paths as the module
+  // directories. Applies at most once.
+  function resolveWithPathsFallback(
+    result: ResolveResult,
+  ): ResolveResult | Promise<ResolveResult> {
+    if (result.path || !paths?.length) {
+      return result;
+    }
+
+    const moduleDirectories =
+      modules == null || Array.isArray(modules) ? (modules ?? []) : [modules];
+    const fallbackPaths = paths.filter(
+      fallbackPath => !moduleDirectories.includes(fallbackPath),
+    );
+    if (fallbackPaths.length === 0) {
+      return result;
+    }
+
+    unrsResolver = resolverForOptions({
+      ...getResolveOptions(),
+      modules: fallbackPaths as Array<string>,
+    });
+    return attemptResolve();
+  }
+
+  const result = attemptResolve();
+  if ('then' in result) {
+    return result.then(resolveWithPathsFallback);
+  }
+  return resolveWithPathsFallback(result) as ResolveResult;
 }
 
-function createResolveOptions(
-  conditions: Array<string> | undefined,
-): resolve.Options {
-  return conditions
-    ? {conditions, unsafe: true}
-    : // no conditions were passed - let's assume this is Jest internal and it should be `require`
-      {browser: false, require: true};
-}
+export const defaultResolver: SyncResolver = (path, options) =>
+  handleResolveResult(baseResolver(path, options));
 
-// if it's a relative import or an absolute path, imports/exports are ignored
-const shouldIgnoreRequestForExports = (path: string) =>
-  path.startsWith('.') || isAbsolute(path);
+export const defaultAsyncResolver: AsyncResolver = async (path, options) =>
+  handleResolveResult(await baseResolver(path, options, true));
+
+export default defaultResolver;

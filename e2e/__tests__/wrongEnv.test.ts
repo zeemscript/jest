@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import {onNodeVersions} from '@jest/test-utils';
 import {extractSummary} from '../Utils';
 import runJest from '../runJest';
 
@@ -23,8 +24,11 @@ describe('Wrong globals for environment', () => {
     assertFailuresAndSnapshot(['node', '-t=document']);
   });
 
-  it('print useful error for navigator', () => {
-    assertFailuresAndSnapshot(['node', '-t=navigator']);
+  // Node.js 18 is the last LTS version, which is missing the global 'navigator'
+  onNodeVersions('<=18', () => {
+    it('print useful error for navigator', () => {
+      assertFailuresAndSnapshot(['node', '-t=navigator']);
+    });
   });
 
   it('print useful error for unref', () => {

@@ -7,7 +7,7 @@
 
 import type {V8Coverage} from 'collect-v8-coverage';
 import * as fs from 'graceful-fs';
-import {FileCoverage, createFileCoverage} from 'istanbul-lib-coverage';
+import {type FileCoverage, createFileCoverage} from 'istanbul-lib-coverage';
 import {readInitialCoverage} from 'istanbul-lib-instrument';
 import {createScriptTransformer, shouldInstrument} from '@jest/transform';
 import type {Config} from '@jest/types';
@@ -37,6 +37,7 @@ export default async function generateEmptyCoverage(
     collectCoverage: globalConfig.collectCoverage,
     collectCoverageFrom: globalConfig.collectCoverageFrom,
     coverageProvider: globalConfig.coverageProvider,
+    globalRootDir: globalConfig.rootDir,
     sourcesRelatedToTestsInChangedFiles,
   };
   let coverageWorkerResult: CoverageWorkerResult | null = null;

@@ -13,13 +13,18 @@ describe('Runtime', () => {
     createRuntime = require('createRuntime');
   });
 
-  describe('wrapCodeInModuleWrapper', () => {
-    it('generates the correct args for the module wrapper', async () => {
+  describe('injectedModuleParameters', () => {
+    it('generates the correct args', async () => {
       const runtime = await createRuntime(__filename);
 
-      expect(
-        runtime.wrapCodeInModuleWrapper('module.exports = "Hello!"'),
-      ).toMatchSnapshot();
+      expect(runtime.executor.injectedModuleParameters).toEqual([
+        'module',
+        'exports',
+        'require',
+        '__dirname',
+        '__filename',
+        'jest',
+      ]);
     });
 
     it('injects "extra globals"', async () => {
@@ -27,9 +32,29 @@ describe('Runtime', () => {
         sandboxInjectedGlobals: ['Math'],
       });
 
-      expect(
-        runtime.wrapCodeInModuleWrapper('module.exports = "Hello!"'),
-      ).toMatchSnapshot();
+      expect(runtime.executor.injectedModuleParameters).toEqual([
+        'module',
+        'exports',
+        'require',
+        '__dirname',
+        '__filename',
+        'jest',
+        'Math',
+      ]);
+    });
+
+    it('avoid injecting `jest` if `injectGlobals = false`', async () => {
+      const runtime = await createRuntime(__filename, {
+        injectGlobals: false,
+      });
+
+      expect(runtime.executor.injectedModuleParameters).toEqual([
+        'module',
+        'exports',
+        'require',
+        '__dirname',
+        '__filename',
+      ]);
     });
   });
 });

@@ -1,5 +1,5 @@
 .idea
-.DS_STORE
+.DS_Store
 .eslintcache
 *.swp
 *~
@@ -13,6 +13,9 @@ coverage
 
 # Breaks tests
 /e2e/coverage-handlebars/greet.hbs
+
+# Compiler output whose inline source map encodes its exact columns
+/e2e/source-map-not-transformed/lib/boom.js
 
 # Third-party script
 packages/jest-diff/src/cleanupSemantic.ts

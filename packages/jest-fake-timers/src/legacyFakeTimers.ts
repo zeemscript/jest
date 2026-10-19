@@ -7,8 +7,8 @@
 
 /* eslint-disable local/prefer-spread-eventually */
 
-import {promisify} from 'util';
-import {StackTraceConfig, formatStackTrace} from 'jest-message-util';
+import {promisify} from 'node:util';
+import {type StackTraceConfig, formatStackTrace} from 'jest-message-util';
 import type {
   FunctionLike,
   Mock,
@@ -18,6 +18,7 @@ import type {
 import {setGlobal} from 'jest-util';
 
 type Callback = (...args: Array<unknown>) => void;
+type TemporalDurationLike = {total(options: {unit: string}): number};
 
 type TimerID = string;
 
@@ -62,7 +63,7 @@ type TimerConfig<Ref> = {
   refToId: (ref: Ref) => number | void;
 };
 
-const MS_IN_A_YEAR = 31536000000;
+const MS_IN_A_YEAR = 31_536_000_000;
 
 export default class FakeTimers<TimerRef = unknown> {
   private _cancelledTicks!: Record<string, boolean>;
@@ -70,7 +71,7 @@ export default class FakeTimers<TimerRef = unknown> {
   private _disposed: boolean;
   private _fakeTimerAPIs!: FakeTimerAPI;
   private _fakingTime = false;
-  private _global: typeof globalThis;
+  private readonly _global: typeof globalThis;
   private _immediates!: Array<Tick>;
   private readonly _maxLoops: number;
   private readonly _moduleMocker: ModuleMocker;
@@ -97,7 +98,7 @@ export default class FakeTimers<TimerRef = unknown> {
     this._global = global;
     this._timerConfig = timerConfig;
     this._config = config;
-    this._maxLoops = maxLoops || 100000;
+    this._maxLoops = maxLoops || 100_000;
     this._uuidCounter = 1;
     this._moduleMocker = moduleMocker;
 
@@ -224,11 +225,11 @@ export default class FakeTimers<TimerRef = unknown> {
       // Some of the immediate calls could be enqueued
       // during the previous handling of the timers, we should
       // run them as well.
-      if (this._immediates.length) {
+      if (this._immediates.length > 0) {
         this.runAllImmediates();
       }
 
-      if (this._ticks.length) {
+      if (this._ticks.length > 0) {
         this.runAllTicks();
       }
     }
@@ -244,24 +245,24 @@ export default class FakeTimers<TimerRef = unknown> {
   runOnlyPendingTimers(): void {
     // We need to hold the current shape of `this._timers` because existing
     // timers can add new ones to the map and hence would run more than necessary.
-    // See https://github.com/facebook/jest/pull/4608 for details
-    const timerEntries = Array.from(this._timers.entries());
+    // See https://github.com/jestjs/jest/pull/4608 for details
+    const timerEntries = [...this._timers.entries()];
     this._checkFakeTimers();
-    this._immediates.forEach(this._runImmediate, this);
+    for (const _immediate of this._immediates) this._runImmediate(_immediate);
 
-    timerEntries
-      .sort(([, left], [, right]) => left.expiry - right.expiry)
-      .forEach(([timerHandle, timer]) => {
-        this._now = timer.expiry;
-        this._runTimerHandle(timerHandle);
-      });
+    for (const [timerHandle, timer] of timerEntries.sort(
+      ([, left], [, right]) => left.expiry - right.expiry,
+    )) {
+      this._now = timer.expiry;
+      this._runTimerHandle(timerHandle);
+    }
   }
 
   advanceTimersToNextTimer(steps = 1): void {
     if (steps < 1) {
       return;
     }
-    const nextExpiry = Array.from(this._timers.values()).reduce(
+    const nextExpiry = [...this._timers.values()].reduce(
       (minExpiry: number | null, timer: Timer): number => {
         if (minExpiry === null || timer.expiry < minExpiry) return timer.expiry;
         return minExpiry;
@@ -274,8 +275,12 @@ export default class FakeTimers<TimerRef = unknown> {
     }
   }
 
-  advanceTimersByTime(msToRun: number): void {
+  advanceTimersByTime(msToRun: number | TemporalDurationLike): void {
     this._checkFakeTimers();
+    let msRemaining =
+      typeof msToRun === 'number'
+        ? msToRun
+        : msToRun.total({unit: 'millisecond'});
     // Only run a generous number of timers and then bail.
     // This is just to help avoid recursive loops
     let i;
@@ -288,18 +293,18 @@ export default class FakeTimers<TimerRef = unknown> {
       }
       const [timerHandle, nextTimerExpiry] = timerHandleAndExpiry;
 
-      if (this._now + msToRun < nextTimerExpiry) {
+      if (this._now + msRemaining < nextTimerExpiry) {
         // There are no timers between now and the target we're running to
         break;
       } else {
-        msToRun -= nextTimerExpiry - this._now;
+        msRemaining -= nextTimerExpiry - this._now;
         this._now = nextTimerExpiry;
         this._runTimerHandle(timerHandle);
       }
     }
 
     // Advance the clock by whatever time we still have left to run
-    this._now += msToRun;
+    this._now += msRemaining;
 
     if (i === this._maxLoops) {
       throw new Error(
@@ -324,9 +329,9 @@ export default class FakeTimers<TimerRef = unknown> {
     let errThrown = false;
     try {
       cb();
-    } catch (e) {
+    } catch (error) {
       errThrown = true;
-      cbErr = e;
+      cbErr = error;
     }
 
     this._global.clearImmediate = prevClearImmediate;
@@ -423,6 +428,7 @@ export default class FakeTimers<TimerRef = unknown> {
           'in this test file or enable fake timers for all tests by setting ' +
           "{'enableGlobally': true, 'legacyFakeTimers': true} in " +
           `Jest configuration file.\nStack Trace:\n${formatStackTrace(
+            // eslint-disable-next-line unicorn/error-message
             new Error().stack!,
             this._config,
             {noStackTrace: false},
@@ -431,11 +437,16 @@ export default class FakeTimers<TimerRef = unknown> {
     }
   }
 
-  private _createMocks() {
-    const fn = <T extends FunctionLike = UnknownFunction>(implementation?: T) =>
-      this._moduleMocker.fn(implementation);
+  #createMockFunction<T extends FunctionLike = UnknownFunction>(
+    implementation: T,
+  ) {
+    return this._moduleMocker.fn(implementation.bind(this));
+  }
 
-    const promisifiableFakeSetTimeout = fn(this._fakeSetTimeout.bind(this));
+  private _createMocks() {
+    const promisifiableFakeSetTimeout = this.#createMockFunction(
+      this._fakeSetTimeout,
+    );
     // @ts-expect-error: no index
     promisifiableFakeSetTimeout[promisify.custom] = (
       delay?: number,
@@ -444,14 +455,16 @@ export default class FakeTimers<TimerRef = unknown> {
       new Promise(resolve => promisifiableFakeSetTimeout(resolve, delay, arg));
 
     this._fakeTimerAPIs = {
-      cancelAnimationFrame: fn(this._fakeClearTimer.bind(this)),
-      clearImmediate: fn(this._fakeClearImmediate.bind(this)),
-      clearInterval: fn(this._fakeClearTimer.bind(this)),
-      clearTimeout: fn(this._fakeClearTimer.bind(this)),
-      nextTick: fn(this._fakeNextTick.bind(this)),
-      requestAnimationFrame: fn(this._fakeRequestAnimationFrame.bind(this)),
-      setImmediate: fn(this._fakeSetImmediate.bind(this)),
-      setInterval: fn(this._fakeSetInterval.bind(this)),
+      cancelAnimationFrame: this.#createMockFunction(this._fakeClearTimer),
+      clearImmediate: this.#createMockFunction(this._fakeClearImmediate),
+      clearInterval: this.#createMockFunction(this._fakeClearTimer),
+      clearTimeout: this.#createMockFunction(this._fakeClearTimer),
+      nextTick: this.#createMockFunction(this._fakeNextTick),
+      requestAnimationFrame: this.#createMockFunction(
+        this._fakeRequestAnimationFrame,
+      ),
+      setImmediate: this.#createMockFunction(this._fakeSetImmediate),
+      setInterval: this.#createMockFunction(this._fakeSetInterval),
       setTimeout: promisifiableFakeSetTimeout,
     };
   }
@@ -513,7 +526,7 @@ export default class FakeTimers<TimerRef = unknown> {
 
     this._timerAPIs.setImmediate(() => {
       if (!this._disposed) {
-        if (this._immediates.find(x => x.uuid === uuid)) {
+        if (this._immediates.some(x => x.uuid === uuid)) {
           try {
             callback.apply(null, args);
           } finally {
@@ -560,7 +573,7 @@ export default class FakeTimers<TimerRef = unknown> {
       return null;
     }
 
-    // eslint-disable-next-line no-bitwise
+    // eslint-disable-next-line no-bitwise,unicorn/prefer-math-trunc
     delay = Number(delay) | 0;
 
     const uuid = this._uuidCounter++;
@@ -579,12 +592,12 @@ export default class FakeTimers<TimerRef = unknown> {
     let nextTimerHandle = null;
     let soonestTime = MS_IN_A_YEAR;
 
-    this._timers.forEach((timer, uuid) => {
+    for (const [uuid, timer] of this._timers.entries()) {
       if (timer.expiry < soonestTime) {
         soonestTime = timer.expiry;
         nextTimerHandle = uuid;
       }
-    });
+    }
 
     if (nextTimerHandle === null) {
       return null;

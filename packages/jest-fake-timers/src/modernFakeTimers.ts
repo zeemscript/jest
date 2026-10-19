@@ -6,10 +6,12 @@
  */
 
 import {
-  FakeTimerWithContext,
-  FakeMethod as FakeableAPI,
-  InstalledClock,
-  FakeTimerInstallOpts as SinonFakeTimersConfig,
+  type FakeTimers as FakeTimerWithContext,
+  type FakeMethod as FakeableAPI,
+  type Clock as InstalledClock,
+  type Config as SinonFakeTimersConfig,
+  type TemporalDuration,
+  type TemporalTimelike,
   withGlobal,
 } from '@sinonjs/fake-timers';
 import type {Config} from '@jest/types';
@@ -98,21 +100,38 @@ export default class FakeTimers {
     }
   }
 
-  advanceTimersByTime(msToRun: number): void {
+  advanceTimersByTime(msToRun: number | TemporalDuration): void {
     if (this._checkFakeTimers()) {
-      this._clock.tick(msToRun);
+      // TODO: pass msToRun directly once https://github.com/sinonjs/fake-timers/pull/574 is published
+      this._clock.tick(
+        typeof msToRun === 'number'
+          ? msToRun
+          : msToRun.total({unit: 'millisecond'}),
+      );
     }
   }
 
-  async advanceTimersByTimeAsync(msToRun: number): Promise<void> {
+  async advanceTimersByTimeAsync(
+    msToRun: number | TemporalDuration,
+  ): Promise<void> {
     if (this._checkFakeTimers()) {
-      await this._clock.tickAsync(msToRun);
+      // TODO: pass msToRun directly once https://github.com/sinonjs/fake-timers/pull/574 is published
+      await this._clock.tickAsync(
+        typeof msToRun === 'number'
+          ? msToRun
+          : msToRun.total({unit: 'millisecond'}),
+      );
+    }
+  }
+
+  advanceTimersToNextFrame(): void {
+    if (this._checkFakeTimers()) {
+      this._clock.runToFrame();
     }
   }
 
   runAllTicks(): void {
     if (this._checkFakeTimers()) {
-      // @ts-expect-error - doesn't exist?
       this._clock.runMicrotasks();
     }
   }
@@ -144,9 +163,18 @@ export default class FakeTimers {
     }
   }
 
-  setSystemTime(now?: number | Date): void {
+  setSystemTime(now?: number | Date | TemporalTimelike): void {
     if (this._checkFakeTimers()) {
       this._clock.setSystemTime(now);
+    }
+  }
+
+  setTimerTickMode(tickModeConfig: {
+    mode: 'interval' | 'manual' | 'nextAsync';
+    delta?: number;
+  }): void {
+    if (this._checkFakeTimers()) {
+      this._clock.setTickMode(tickModeConfig);
     }
   }
 
@@ -176,6 +204,7 @@ export default class FakeTimers {
           'with fake timers. Call `jest.useFakeTimers()` in this test file or enable ' +
           "fake timers for all tests by setting 'fakeTimers': {'enableGlobally': true} " +
           `in Jest configuration file.\nStack Trace:\n${formatStackTrace(
+            // eslint-disable-next-line unicorn/error-message
             new Error().stack!,
             this._config,
             {noStackTrace: false},
@@ -203,9 +232,10 @@ export default class FakeTimers {
       Object.keys(this._fakeTimers.timers) as Array<FakeableAPI>,
     );
 
-    fakeTimersConfig.doNotFake?.forEach(nameOfFakeableAPI => {
-      toFake.delete(nameOfFakeableAPI);
-    });
+    if (fakeTimersConfig.doNotFake)
+      for (const nameOfFakeableAPI of fakeTimersConfig.doNotFake) {
+        toFake.delete(nameOfFakeableAPI);
+      }
 
     return {
       advanceTimeDelta,
@@ -213,7 +243,7 @@ export default class FakeTimers {
       now: fakeTimersConfig.now ?? Date.now(),
       shouldAdvanceTime: Boolean(fakeTimersConfig.advanceTimers),
       shouldClearNativeTimers: true,
-      toFake: Array.from(toFake),
+      toFake: [...toFake],
     };
   }
 }

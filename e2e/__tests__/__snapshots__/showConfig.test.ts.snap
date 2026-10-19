@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`--showConfig outputs config info and exits 1`] = `
 "{
@@ -8,11 +8,13 @@ exports[`--showConfig outputs config info and exits 1`] = `
       "cache": false,
       "cacheDirectory": "/tmp/jest",
       "clearMocks": false,
+      "collectCoverage": false,
       "collectCoverageFrom": [],
       "coverageDirectory": "<<REPLACED_ROOT_DIR>>/coverage",
       "coveragePathIgnorePatterns": [
         "/node_modules/"
       ],
+      "coverageProvider": "babel",
       "cwd": "<<REPLACED_ROOT_DIR>>",
       "detectLeaks": false,
       "detectOpenHandles": false,
@@ -40,6 +42,8 @@ exports[`--showConfig outputs config info and exits 1`] = `
         "cjs",
         "jsx",
         "ts",
+        "mts",
+        "cts",
         "tsx",
         "json",
         "node"
@@ -56,6 +60,7 @@ exports[`--showConfig outputs config info and exits 1`] = `
         "<<REPLACED_ROOT_DIR>>"
       ],
       "runner": "<<REPLACED_JEST_PACKAGES_DIR>>/jest-runner/build/index.js",
+      "runnerOptions": {},
       "sandboxInjectedGlobals": [],
       "setupFiles": [],
       "setupFilesAfterEnv": [],
@@ -70,14 +75,14 @@ exports[`--showConfig outputs config info and exits 1`] = `
       "testEnvironmentOptions": {},
       "testLocationInResults": false,
       "testMatch": [
-        "**/__tests__/**/*.[jt]s?(x)",
-        "**/?(*.)+(spec|test).[tj]s?(x)"
+        "**/__tests__/**/*.?([mc])[jt]s?(x)",
+        "**/?(*.)+(spec|test).?([mc])[jt]s?(x)"
       ],
       "testPathIgnorePatterns": [
         "/node_modules/"
       ],
       "testRegex": [],
-      "testRunner": "<<REPLACED_JEST_PACKAGES_DIR>>/jest-circus/runner.js",
+      "testRunner": "<<REPLACED_JEST_PACKAGES_DIR>>/jest-circus/build/runner.js",
       "transform": [
         [
           "\\\\.[jt]sx?$",
@@ -89,6 +94,7 @@ exports[`--showConfig outputs config info and exits 1`] = `
         "/node_modules/",
         "<<REPLACED_PNP_PATH>>"
       ],
+      "waitForUnhandledRejections": false,
       "watchPathIgnorePatterns": []
     }
   ],
@@ -98,6 +104,7 @@ exports[`--showConfig outputs config info and exits 1`] = `
     "ci": true,
     "collectCoverage": false,
     "collectCoverageFrom": [],
+    "collectTests": false,
     "coverageDirectory": "<<REPLACED_ROOT_DIR>>/coverage",
     "coverageProvider": "babel",
     "coverageReporters": [
@@ -128,6 +135,7 @@ exports[`--showConfig outputs config info and exits 1`] = `
     "passWithNoTests": false,
     "projects": [],
     "rootDir": "<<REPLACED_ROOT_DIR>>",
+    "runInBand": false,
     "runTestsByPath": false,
     "seed": <<RANDOM_SEED>>,
     "skipFilter": false,
@@ -136,13 +144,15 @@ exports[`--showConfig outputs config info and exits 1`] = `
       "printBasicPrototype": false
     },
     "testFailureExitCode": 1,
-    "testPathPattern": "",
+    "testPathPatterns": [],
     "testSequencer": "<<REPLACED_JEST_PACKAGES_DIR>>/jest-test-sequencer/build/index.js",
     "updateSnapshot": "none",
     "useStderr": false,
+    "waitForUnhandledRejections": false,
     "watch": false,
     "watchAll": false,
     "watchman": true,
+    "workerGracefulExitTimeout": 500,
     "workerThreads": false
   },
   "version": "[version]"

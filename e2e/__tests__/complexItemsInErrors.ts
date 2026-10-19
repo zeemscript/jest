@@ -50,7 +50,7 @@ test('handles functions that close over outside variables', async () => {
     tempDir,
     ['--no-watchman', '--watch-all'],
     // timeout in case the `waitUntil` below doesn't fire
-    {stripAnsi: true, timeout: 10000},
+    {stripAnsi: true, timeout: 10_000},
   );
 
   await waitUntil(({stderr}) => stderr.includes('Ran all test suites.'));
@@ -61,7 +61,7 @@ test('handles functions that close over outside variables', async () => {
   expect(rest).toMatchSnapshot();
 });
 
-test.skip('handles errors with BigInt', async () => {
+test('handles errors with BigInt', async () => {
   const testFileContent = `
     test('dummy', () => {
       expect(1n).toEqual(2n);

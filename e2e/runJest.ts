@@ -6,16 +6,28 @@
  *
  */
 
-import * as path from 'path';
-import {Writable} from 'stream';
+import * as nodeModule from 'node:module';
+import * as path from 'node:path';
+import {Writable} from 'node:stream';
+import {stripVTControlCharacters as stripAnsi} from 'node:util';
 import dedent from 'dedent';
-import execa = require('execa');
+import execa from 'execa';
 import * as fs from 'graceful-fs';
-import stripAnsi = require('strip-ansi');
+import {TestPathPatterns} from '@jest/pattern';
 import type {FormattedTestResults} from '@jest/test-result';
+import {normalizeIcons} from '@jest/test-utils';
 import type {Config} from '@jest/types';
 import {ErrorWithStack} from 'jest-util';
-import {normalizeIcons} from './Utils';
+
+// @ts-expect-error: Type assertion can be removed once @types/node is updated to 23 https://nodejs.org/api/process.html#processfeaturestypescript
+export const useNativeTypeScript = Boolean(process.features.typescript);
+
+// `module.stripTypeScriptTypes` landed in Node 22.13/23.2 and works regardless
+// of `--no-experimental-strip-types`, so it is a wider gate than
+// `process.features.typescript`.
+export const supportsTypeStripping =
+  // @ts-expect-error: not yet typed in @types/node@18
+  typeof nodeModule.stripTypeScriptTypes === 'function';
 
 const JEST_PATH = path.resolve(__dirname, '../packages/jest-cli/bin/jest.js');
 
@@ -86,7 +98,20 @@ function spawnJest(
   }
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    // Prevent AI agent detection from leaking into child processes, which
+    // would activate the AgentReporter and break output-dependent e2e tests.
+    AI_AGENT: undefined,
+    AUGMENT_AGENT: undefined,
+    CLAUDECODE: undefined,
+    CLAUDE_CODE: undefined,
+    CODEX_SANDBOX: undefined,
+    CODEX_THREAD_ID: undefined,
+    CURSOR_AGENT: undefined,
     FORCE_COLOR: '0',
+    GEMINI_CLI: undefined,
+    GOOSE_PROVIDER: undefined,
+    NO_COLOR: '1',
+    OPENCODE: undefined,
     ...options.env,
   };
 
@@ -151,13 +176,16 @@ export const json = function (
       ...result,
       json: JSON.parse(result.stdout),
     };
-  } catch (e: any) {
-    throw new Error(dedent`
+  } catch (error: any) {
+    throw new Error(
+      dedent`
       Can't parse JSON.
-      ERROR: ${e.name} ${e.message}
+      ERROR: ${error.name} ${error.message}
       STDOUT: ${result.stdout}
       STDERR: ${result.stderr}
-    `);
+    `,
+      {cause: error},
+    );
   }
 };
 
@@ -172,7 +200,7 @@ export const runContinuous = function (
   args?: Array<string>,
   options: RunJestOptions = {},
 ) {
-  const jestPromise = spawnJest(dir, args, {timeout: 30000, ...options}, true);
+  const jestPromise = spawnJest(dir, args, {timeout: 30_000, ...options}, true);
 
   let stderr = '';
   let stdout = '';
@@ -273,7 +301,7 @@ export function getConfig(
 } {
   const {exitCode, stdout, stderr} = runJest(
     dir,
-    args.concat('--show-config'),
+    [...args, '--show-config'],
     options,
   );
 
@@ -284,5 +312,10 @@ export function getConfig(
     throw error;
   }
 
-  return JSON.parse(stdout);
+  const {testPathPatterns, ...globalConfig} = JSON.parse(stdout);
+
+  return {
+    ...globalConfig,
+    testPathPatterns: new TestPathPatterns(testPathPatterns),
+  };
 }

@@ -12,9 +12,7 @@ import type {Circus, Config, TestResult, TransformTypes} from '@jest/types';
 import type {IHasteFS, IModuleMap} from 'jest-haste-map';
 import type Resolver from 'jest-resolve';
 
-export interface RuntimeTransformResult extends TransformTypes.TransformResult {
-  wrapperLength: number;
-}
+export type RuntimeTransformResult = TransformTypes.TransformResult;
 
 export type V8CoverageResult = Array<{
   codeTransformResult: RuntimeTransformResult | undefined;
@@ -85,12 +83,17 @@ export type Suite = {
   tests: Array<AssertionResult>;
 };
 
-export type TestCaseResult = AssertionResult;
+export type TestCaseResult = AssertionResult & {startedAt?: number | null};
 
 export type TestResult = {
   console?: ConsoleBuffer;
   coverage?: CoverageMapData;
   displayName?: Config.DisplayName;
+  /**
+   * Whether [`test.failing()`](https://jestjs.io/docs/api#testfailingname-fn-timeout)
+   * was used.
+   */
+  failing?: boolean;
   failureMessage?: string | null;
   leaks: boolean;
   memoryUsage?: number;
@@ -101,7 +104,13 @@ export type TestResult = {
   openHandles: Array<Error>;
   perfStats: {
     end: number;
+    loadTestEnvironmentEnd: number;
+    loadTestEnvironmentStart: number;
     runtime: number;
+    setupAfterEnvEnd: number;
+    setupAfterEnvStart: number;
+    setupFilesEnd: number;
+    setupFilesStart: number;
     slow: boolean;
     start: number;
   };
@@ -198,7 +207,7 @@ export type TestEvents = {
   'test-file-success': [Test, TestResult];
   'test-file-failure': [Test, SerializableError];
   'test-case-start': [string, Circus.TestCaseStartInfo];
-  'test-case-result': [string, AssertionResult];
+  'test-case-result': [string, TestCaseResult];
 };
 
 export type TestFileEvent<T extends keyof TestEvents = keyof TestEvents> = (

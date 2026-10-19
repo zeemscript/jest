@@ -8,12 +8,12 @@
 
 import {createHash} from 'crypto';
 import * as path from 'path';
-import semver = require('semver');
+import * as semver from 'semver';
 import type {Config} from '@jest/types';
 import {escapeStrForRegex} from 'jest-regex-util';
 import Defaults from '../Defaults';
 import {DEFAULT_JS_PATTERN} from '../constants';
-import normalize, {AllOptions} from '../normalize';
+import normalize, {type AllOptions} from '../normalize';
 
 const DEFAULT_CSS_PATTERN = '\\.(css)$';
 
@@ -25,6 +25,23 @@ jest
     return {
       ...realFs,
       statSync: () => ({isDirectory: () => true}),
+    };
+  })
+  .mock('jest-util', () => {
+    const realUtil =
+      jest.requireActual<typeof import('jest-util')>('jest-util');
+
+    return {
+      ...realUtil,
+      requireOrImportModule: (filePath: string, interop = true) => {
+        const result = require(filePath);
+
+        if (interop) {
+          return realUtil.interopRequireDefault(result).default;
+        }
+
+        return result;
+      },
     };
   });
 
@@ -74,9 +91,9 @@ it('picks an id based on the rootDir', async () => {
   const rootDir = '/root/path/foo';
   const expected = createHash('sha1')
     .update('/root/path/foo')
-    .update(String(Infinity))
+    .update(String(Number.POSITIVE_INFINITY))
     .digest('hex')
-    .substring(0, 32);
+    .slice(0, 32);
   const {options} = await normalize(
     {
       rootDir,
@@ -118,6 +135,125 @@ it('validation warning occurs when options not for projects is set', async () =>
   expect(mockWarn).toHaveBeenCalledTimes(1);
 });
 
+it('global-only option in project config emits targeted warning', async () => {
+  const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+  const rootDir = '/root/path/foo';
+  await normalize(
+    {
+      bail: true,
+      forceExit: true,
+      rootDir,
+    },
+    {} as Config.Argv,
+    rootDir,
+    1,
+    true, // isProjectOptions
+  );
+
+  expect(mockWarn).toHaveBeenCalledTimes(2);
+  const warnMessages = mockWarn.mock.calls.map(call => call[0] as string);
+  expect(warnMessages.some(msg => msg.includes('root configuration'))).toBe(
+    true,
+  );
+});
+
+it.each([
+  ['reporters', ['default']],
+  ['coverageReporters', ['text']],
+  ['workerIdleMemoryLimit', '50%'],
+  ['coverageThreshold', {global: {lines: 80}}],
+  ['maxWorkers', 2],
+] as Array<[string, unknown]>)(
+  'global-only option %s in project config emits targeted warning',
+  async (option, value) => {
+    const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+    const rootDir = '/root/path/foo';
+    await normalize(
+      {
+        [option]: value,
+        rootDir,
+      },
+      {} as Config.Argv,
+      rootDir,
+      1,
+      true, // isProjectOptions
+    );
+
+    expect(mockWarn).toHaveBeenCalledTimes(1);
+    expect(mockWarn.mock.calls[0][0]).toContain(
+      'is not supported in an individual project configuration',
+    );
+  },
+);
+
+it('no validation warning for collectCoverage in project config', async () => {
+  const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+  const rootDir = '/root/path/foo';
+  await normalize(
+    {
+      collectCoverage: true,
+      rootDir,
+    },
+    {} as Config.Argv,
+    rootDir,
+    1,
+    true, // isProjectOptions
+  );
+
+  expect(mockWarn).not.toHaveBeenCalled();
+});
+
+it('no validation warning for coverageProvider in project config', async () => {
+  const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+  const rootDir = '/root/path/foo';
+  await normalize(
+    {
+      coverageProvider: 'v8',
+      rootDir,
+    },
+    {} as Config.Argv,
+    rootDir,
+    1,
+    true, // isProjectOptions
+  );
+
+  expect(mockWarn).not.toHaveBeenCalled();
+});
+
+it('no validation warning for verbose in project config', async () => {
+  const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+  const rootDir = '/root/path/foo';
+  await normalize(
+    {
+      rootDir,
+      verbose: true,
+    },
+    {} as Config.Argv,
+    rootDir,
+    1,
+    true, // isProjectOptions
+  );
+
+  expect(mockWarn).not.toHaveBeenCalled();
+});
+
+it('no validation warning for silent in project config', async () => {
+  const mockWarn = jest.mocked(console.warn).mockImplementation(() => {});
+  const rootDir = '/root/path/foo';
+  await normalize(
+    {
+      rootDir,
+      silent: true,
+    },
+    {} as Config.Argv,
+    rootDir,
+    1,
+    true, // isProjectOptions
+  );
+
+  expect(mockWarn).not.toHaveBeenCalled();
+});
+
 it('keeps custom ids based on the rootDir', async () => {
   const {options} = await normalize(
     {
@@ -132,10 +268,10 @@ it('keeps custom ids based on the rootDir', async () => {
 
 it('minimal config is stable across runs', async () => {
   const firstNormalization = await normalize({rootDir: '/root/path/foo'}, {
-    seed: 55555,
+    seed: 55_555,
   } as Config.Argv);
   const secondNormalization = await normalize({rootDir: '/root/path/foo'}, {
-    seed: 55555,
+    seed: 55_555,
   } as Config.Argv);
 
   expect(firstNormalization).toEqual(secondNormalization);
@@ -155,6 +291,20 @@ it('sets coverageReporters correctly when argv.json is set', async () => {
   );
 
   expect(options.coverageReporters).toEqual(['json', 'lcov', 'clover']);
+});
+
+it('keeps text coverage reporter when argv.json and outputFile are set', async () => {
+  const {options} = await normalize(
+    {
+      rootDir: '/root/path/foo',
+    },
+    {
+      json: true,
+      outputFile: 'results.json',
+    } as Config.Argv,
+  );
+
+  expect(options.coverageReporters).toEqual(['json', 'text', 'lcov', 'clover']);
 });
 
 describe('rootDir', () => {
@@ -828,9 +978,9 @@ describe('babel-jest', () => {
     Resolver = (require('jest-resolve') as typeof import('jest-resolve'))
       .default;
     Resolver.findNodeModule = jest.fn((name: string) =>
-      name.indexOf('babel-jest') === -1
-        ? `${path.sep}node_modules${path.sep}${name}`
-        : name,
+      name.includes('babel-jest')
+        ? name
+        : `${path.sep}node_modules${path.sep}${name}`,
     );
   });
 
@@ -937,7 +1087,7 @@ describe('testMatch', () => {
     ).rejects.toThrowErrorMatchingSnapshot();
   });
 
-  it('normalizes testMatch', async () => {
+  it('normalizes testMatch root directory', async () => {
     const {options} = await normalize(
       {
         rootDir: '/root',
@@ -947,6 +1097,18 @@ describe('testMatch', () => {
     );
 
     expect(options.testMatch).toEqual(['/root/**/*.js']);
+  });
+
+  it('normalizes testMatch to array', async () => {
+    const {options} = await normalize(
+      {
+        rootDir: '/root',
+        testMatch: '**/*.js',
+      },
+      {} as Config.Argv,
+    );
+
+    expect(options.testMatch).toEqual(['**/*.js']);
   });
 });
 
@@ -1100,7 +1262,7 @@ describe('preset', () => {
     );
 
     const errorMessage = semver.satisfies(process.versions.node, '<19.0.0')
-      ? /Unexpected token } in JSON at position (104|110)[\s\S]* at /
+      ? /Unexpected token } in JSON at position (104|110)[\S\s]* at /
       : 'SyntaxError: Expected double-quoted property name in JSON at position 104';
 
     await expect(
@@ -1119,14 +1281,14 @@ describe('preset', () => {
       '/node_modules/react-native-js-preset/jest-preset.js',
       () => ({
         // @ts-expect-error: Testing runtime error
+        // eslint-disable-next-line unicorn/prefer-prototype-methods
         transform: {}.nonExistingProp.call(),
       }),
       {virtual: true},
     );
 
-    const errorMessage = semver.satisfies(process.versions.node, '<16.9.1')
-      ? /TypeError: Cannot read property 'call' of undefined[\s\S]* at /
-      : "TypeError: Cannot read properties of undefined (reading 'call')";
+    const errorMessage =
+      "TypeError: Cannot read properties of undefined (reading 'call')";
 
     await expect(
       normalize(
@@ -1502,6 +1664,105 @@ describe('runner', () => {
       ),
     ).rejects.toThrowErrorMatchingSnapshot();
   });
+
+  it('resolves runner from tuple config [path, options]', async () => {
+    const {options} = await normalize(
+      {
+        rootDir: '/root/',
+        runner: ['my-runner-foo', {workers: 4}],
+      },
+      {} as Config.Argv,
+    );
+
+    expect(options.runner).toBe('node_modules/my-runner-foo');
+    expect(options.runnerOptions).toEqual({workers: 4});
+  });
+
+  it('sets runnerOptions to empty object for string runner', async () => {
+    const {options} = await normalize(
+      {
+        rootDir: '/root/',
+        runner: 'my-runner-foo',
+      },
+      {} as Config.Argv,
+    );
+
+    expect(options.runner).toBe('node_modules/my-runner-foo');
+    expect(options.runnerOptions).toEqual({});
+  });
+
+  it('sets runnerOptions to empty object when tuple has no options', async () => {
+    const {options} = await normalize(
+      {
+        rootDir: '/root/',
+        runner: ['my-runner-foo', {}],
+      },
+      {} as Config.Argv,
+    );
+
+    expect(options.runner).toBe('node_modules/my-runner-foo');
+    expect(options.runnerOptions).toEqual({});
+  });
+
+  it('throws error when runner options is not a plain object', async () => {
+    await expect(
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: ['my-runner-foo', 'invalid' as any],
+        },
+        {} as Config.Argv,
+      ),
+    ).rejects.toThrow('Runner options must be a plain object');
+  });
+
+  it('throws error when runner options is an array', async () => {
+    await expect(
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: ['my-runner-foo', [] as any],
+        },
+        {} as Config.Argv,
+      ),
+    ).rejects.toThrow('Runner options must be a plain object');
+  });
+
+  it('throws error when runner tuple has empty string', async () => {
+    await expect(
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: ['', {option: true}] as any,
+        },
+        {} as Config.Argv,
+      ),
+    ).rejects.toThrow('Runner must be a string or a tuple [string, object]');
+  });
+
+  it('throws error when runner tuple has non-string first element', async () => {
+    await expect(
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: [123, {option: true}] as any,
+        },
+        {} as Config.Argv,
+      ),
+    ).rejects.toThrow('Runner must be a string or a tuple [string, object]');
+  });
+
+  it('throws error when runner options is a non-plain object', async () => {
+    await expect(
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: ['my-runner-foo', new Date() as any],
+        },
+        {} as Config.Argv,
+      ),
+    ).rejects.toThrow('Runner options must be a plain object');
+  });
 });
 
 describe('watchPlugins', () => {
@@ -1585,7 +1846,7 @@ describe('watchPlugins', () => {
   });
 });
 
-describe('testPathPattern', () => {
+describe('testPathPatterns', () => {
   const initialOptions = {rootDir: '/root'};
   const consoleLog = console.log;
 
@@ -1600,11 +1861,11 @@ describe('testPathPattern', () => {
   it('defaults to empty', async () => {
     const {options} = await normalize(initialOptions, {} as Config.Argv);
 
-    expect(options.testPathPattern).toBe('');
+    expect(options.testPathPatterns.patterns).toEqual([]);
   });
 
   const cliOptions = [
-    {name: '--testPathPattern', property: 'testPathPattern'},
+    {name: '--testPathPatterns', property: 'testPathPatterns'},
     {name: '<regexForTestFiles>', property: '_'},
   ];
   for (const opt of cliOptions) {
@@ -1613,14 +1874,14 @@ describe('testPathPattern', () => {
         const argv = {[opt.property]: ['a/b']} as Config.Argv;
         const {options} = await normalize(initialOptions, argv);
 
-        expect(options.testPathPattern).toBe('a/b');
+        expect(options.testPathPatterns.patterns).toEqual(['a/b']);
       });
 
       it('ignores invalid regular expressions and logs a warning', async () => {
         const argv = {[opt.property]: ['a(']} as Config.Argv;
         const {options} = await normalize(initialOptions, argv);
 
-        expect(options.testPathPattern).toBe('');
+        expect(options.testPathPatterns.patterns).toEqual([]);
         expect(jest.mocked(console.log).mock.calls[0][0]).toMatchSnapshot();
       });
 
@@ -1628,78 +1889,24 @@ describe('testPathPattern', () => {
         const argv = {[opt.property]: ['a/b', 'c/d']} as Config.Argv;
         const {options} = await normalize(initialOptions, argv);
 
-        expect(options.testPathPattern).toBe('a/b|c/d');
-      });
-
-      it('coerces all patterns to strings', async () => {
-        const argv = {[opt.property]: [1]} as Config.Argv;
-        const {options} = await normalize(initialOptions, argv);
-
-        expect(options.testPathPattern).toBe('1');
-      });
-
-      describe('posix', () => {
-        it('should not escape the pattern', async () => {
-          const argv = {
-            [opt.property]: ['a\\/b', 'a/b', 'a\\b', 'a\\\\b'],
-          } as Config.Argv;
-          const {options} = await normalize(initialOptions, argv);
-
-          expect(options.testPathPattern).toBe('a\\/b|a/b|a\\b|a\\\\b');
-        });
-      });
-
-      describe('win32', () => {
-        beforeEach(() => {
-          jest.mock(
-            'path',
-            () => jest.requireActual<typeof import('path')>('path').win32,
-          );
-          (
-            require('jest-resolve') as typeof import('jest-resolve')
-          ).default.findNodeModule = findNodeModule;
-        });
-
-        afterEach(() => {
-          jest.resetModules();
-        });
-
-        it('preserves any use of "\\"', async () => {
-          const argv = {[opt.property]: ['a\\b', 'c\\\\d']} as Config.Argv;
-          const {options} = await (
-            require('../normalize') as typeof import('../normalize')
-          ).default(initialOptions, argv);
-
-          expect(options.testPathPattern).toBe('a\\b|c\\\\d');
-        });
-
-        it('replaces POSIX path separators', async () => {
-          const argv = {[opt.property]: ['a/b']} as Config.Argv;
-          const {options} = await (
-            require('../normalize') as typeof import('../normalize')
-          ).default(initialOptions, argv);
-
-          expect(options.testPathPattern).toBe('a\\\\b');
-        });
-
-        it('replaces POSIX paths in multiple args', async () => {
-          const argv = {[opt.property]: ['a/b', 'c/d']} as Config.Argv;
-          const {options} = await (
-            require('../normalize') as typeof import('../normalize')
-          ).default(initialOptions, argv);
-
-          expect(options.testPathPattern).toBe('a\\\\b|c\\\\d');
-        });
+        expect(options.testPathPatterns.patterns).toEqual(['a/b', 'c/d']);
       });
     });
   }
 
+  it('coerces <regexForTestFiles> patterns to strings', async () => {
+    const argv = {_: [1]} as Config.Argv;
+    const {options} = await normalize(initialOptions, argv);
+
+    expect(options.testPathPatterns.patterns).toEqual(['1']);
+  });
+
   it('joins multiple --testPathPatterns and <regexForTestFiles>', async () => {
     const {options} = await normalize(initialOptions, {
       _: ['a', 'b'],
-      testPathPattern: ['c', 'd'],
+      testPathPatterns: ['c', 'd'],
     } as Config.Argv);
-    expect(options.testPathPattern).toBe('a|b|c|d');
+    expect(options.testPathPatterns.patterns).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('gives precedence to --all', async () => {
@@ -1722,6 +1929,8 @@ describe('moduleFileExtensions', () => {
       'cjs',
       'jsx',
       'ts',
+      'mts',
+      'cts',
       'tsx',
       'json',
       'node',
@@ -1852,10 +2061,6 @@ describe('testTimeout', () => {
 
 describe('extensionsToTreatAsEsm', () => {
   async function matchErrorSnapshot(callback: {
-    (): Promise<{
-      hasDeprecationWarnings: boolean;
-      options: Config.ProjectConfig & Config.GlobalConfig;
-    }>;
     (): Promise<{
       hasDeprecationWarnings: boolean;
       options: Config.ProjectConfig & Config.GlobalConfig;
@@ -2128,7 +2333,7 @@ it('parses workerIdleMemoryLimit', async () => {
     {} as Config.Argv,
   );
 
-  expect(options.workerIdleMemoryLimit).toBe(47185920);
+  expect(options.workerIdleMemoryLimit).toBe(47_185_920);
 });
 
 describe('seed', () => {
@@ -2211,5 +2416,19 @@ describe('randomize', () => {
   test('randomize is false when neither is set', async () => {
     const {options} = await normalize({rootDir: '/root/'}, {} as Config.Argv);
     expect(options.randomize).toBeFalsy();
+  });
+});
+
+describe('runInBand', () => {
+  test('always set it', async () => {
+    const {options} = await normalize({rootDir: '/root/'}, {} as Config.Argv);
+    expect(options.runInBand).toBe(false);
+  });
+
+  test('respect argv', async () => {
+    const {options} = await normalize({rootDir: '/root/'}, {
+      runInBand: true,
+    } as Config.Argv);
+    expect(options.runInBand).toBe(true);
   });
 });

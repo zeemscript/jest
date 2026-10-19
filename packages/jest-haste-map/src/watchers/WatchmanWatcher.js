@@ -5,32 +5,65 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {strict as assert} from 'assert';
-import {EventEmitter} from 'events';
-import * as path from 'path';
+import {strict as assert} from 'node:assert';
+import {EventEmitter} from 'node:events';
+import * as path from 'node:path';
+import anymatch from 'anymatch';
 import watchman from 'fb-watchman';
 import fs from 'graceful-fs';
-import RecrawlWarning from './RecrawlWarning';
-import common from './common';
+import {isIgnorableFileError} from '../lib/isIgnorableFileError';
+import * as common from './common';
 
 const CHANGE_EVENT = common.CHANGE_EVENT;
 const DELETE_EVENT = common.DELETE_EVENT;
 const ADD_EVENT = common.ADD_EVENT;
 const ALL_EVENT = common.ALL_EVENT;
-const SUB_NAME = 'sane-sub';
+const SUB_NAME = 'jest-haste-map';
+
+// Dedupe repeated "Recrawled this watch N times" warnings from watchman.
+const RECRAWL_WARNINGS = [];
+const RECRAWL_REGEXP =
+  /Recrawled this watch (\d+) times, most recently because:\n([^:]+)/;
+
+function isRecrawlWarningDupe(warningMessage) {
+  if (typeof warningMessage !== 'string') {
+    return false;
+  }
+  const match = warningMessage.match(RECRAWL_REGEXP);
+  if (!match) {
+    return false;
+  }
+  const count = Number(match[1]);
+  const root = match[2];
+  const existing = RECRAWL_WARNINGS.find(w => w.root === root);
+  if (existing) {
+    if (existing.count >= count) {
+      return true;
+    }
+    existing.count = count;
+    return false;
+  }
+  RECRAWL_WARNINGS.push({count, root});
+  return false;
+}
 
 /**
  * Watches `dir`.
  *
- * @class PollWatcher
+ * @class WatchmanWatcher
  * @param String dir
  * @param {Object} opts
  * @public
  */
 
 export default function WatchmanWatcher(dir, opts) {
-  common.assignOptions(this, opts);
+  this.globs = opts.glob;
+  this.dot = opts.dot;
+  this.hasIgnore = Boolean(opts.ignored);
+  this.doIgnore = opts.ignored ? anymatch(opts.ignored) : () => false;
   this.root = path.resolve(dir);
+  this._console = opts.console || globalThis.console;
+  this._closed = false;
   this.init();
 }
 
@@ -54,7 +87,12 @@ WatchmanWatcher.prototype.init = function () {
   });
   this.client.on('subscription', this.handleChangeEvent.bind(this));
   this.client.on('end', () => {
-    console.warn('[sane] Warning: Lost connection to watchman, reconnecting..');
+    if (self._closed) {
+      return;
+    }
+    self._console.warn(
+      '[jest-haste-map] Warning: Lost connection to watchman, reconnecting..',
+    );
     self.init();
   });
 
@@ -70,7 +108,7 @@ WatchmanWatcher.prototype.init = function () {
       return;
     }
 
-    handleWarning(resp);
+    handleWarning(self, resp);
 
     self.capabilities = resp.capabilities;
 
@@ -86,10 +124,10 @@ WatchmanWatcher.prototype.init = function () {
       return;
     }
 
-    handleWarning(resp);
+    handleWarning(self, resp);
 
     self.watchProjectInfo = {
-      relativePath: resp.relative_path ? resp.relative_path : '',
+      relativePath: resp.relative_path ?? '',
       root: resp.watch,
     };
 
@@ -101,7 +139,7 @@ WatchmanWatcher.prototype.init = function () {
       return;
     }
 
-    handleWarning(resp);
+    handleWarning(self, resp);
 
     self.client.command(['clock', getWatchRoot()], onClock);
   }
@@ -111,7 +149,7 @@ WatchmanWatcher.prototype.init = function () {
       return;
     }
 
-    handleWarning(resp);
+    handleWarning(self, resp);
 
     const options = {
       fields: ['name', 'exists', 'new'],
@@ -138,10 +176,10 @@ WatchmanWatcher.prototype.init = function () {
         }
       } else {
         options.expression = ['anyof'];
-        for (const i in self.globs) {
+        for (const glob of self.globs) {
           options.expression.push([
             'match',
-            self.globs[i],
+            glob,
             'wholename',
             {
               includedotfiles: self.dot,
@@ -166,7 +204,7 @@ WatchmanWatcher.prototype.init = function () {
       return;
     }
 
-    handleWarning(resp);
+    handleWarning(self, resp);
 
     self.emit('ready');
   }
@@ -191,11 +229,8 @@ WatchmanWatcher.prototype.handleChangeEvent = function (resp) {
   if (resp.is_fresh_instance) {
     this.emit('fresh_instance');
   }
-  if (resp.is_fresh_instance) {
-    this.emit('fresh_instance');
-  }
   if (Array.isArray(resp.files)) {
-    resp.files.forEach(this.handleFileChange, this);
+    for (const file of resp.files) this.handleFileChange(file);
   }
 };
 
@@ -230,13 +265,11 @@ WatchmanWatcher.prototype.handleFileChange = function (changeDescriptor) {
     return;
   }
 
-  if (!changeDescriptor.exists) {
-    self.emitEvent(DELETE_EVENT, relativePath, self.root);
-  } else {
+  if (changeDescriptor.exists) {
     fs.lstat(absPath, (error, stat) => {
-      // Files can be deleted between the event and the lstat call
-      // the most reliable thing to do here is to ignore the event.
-      if (error && error.code === 'ENOENT') {
+      // Files can disappear or temporarily become unreadable between the
+      // Watchman event and the lstat call, so ignore that stale event.
+      if (error && isIgnorableFileError(error)) {
         return;
       }
 
@@ -251,6 +284,8 @@ WatchmanWatcher.prototype.handleFileChange = function (changeDescriptor) {
         self.emitEvent(eventType, relativePath, self.root, stat);
       }
     });
+  } else {
+    self.emitEvent(DELETE_EVENT, relativePath, self.root);
   }
 };
 
@@ -270,6 +305,11 @@ WatchmanWatcher.prototype.emitEvent = function (
   root,
   stat,
 ) {
+  // An `lstat` started before close() can still complete after it. Delivering
+  // that event would feed the already-stopped ChangeQueue.
+  if (this._closed) {
+    return;
+  }
   this.emit(eventType, filepath, root, stat);
   this.emit(ALL_EVENT, eventType, filepath, root, stat);
 };
@@ -280,6 +320,7 @@ WatchmanWatcher.prototype.emitEvent = function (
  */
 
 WatchmanWatcher.prototype.close = function () {
+  this._closed = true;
   this.client.removeAllListeners();
   this.client.end();
   return Promise.resolve();
@@ -294,27 +335,30 @@ WatchmanWatcher.prototype.close = function () {
  */
 
 function handleError(self, error) {
-  if (error != null) {
-    self.emit('error', error);
-    return true;
-  } else {
+  if (error == null) {
     return false;
+  } else {
+    if (!self._closed) {
+      self.emit('error', error);
+    }
+    return true;
   }
 }
 
 /**
  * Handles a warning in the watchman resp object.
  *
+ * @param {WatchmanWatcher} self
  * @param {object} resp
  * @private
  */
 
-function handleWarning(resp) {
+function handleWarning(self, resp) {
   if ('warning' in resp) {
-    if (RecrawlWarning.isRecrawlWarningDupe(resp.warning)) {
+    if (isRecrawlWarningDupe(resp.warning)) {
       return true;
     }
-    console.warn(resp.warning);
+    self._console.warn(resp.warning);
     return true;
   } else {
     return false;

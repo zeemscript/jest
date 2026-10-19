@@ -43,7 +43,7 @@ const getGlobalTestMocks =
   };
 
 describe('jest-each', () => {
-  [
+  for (const keyPath of [
     ['test'],
     ['test', 'concurrent'],
     ['test', 'concurrent', 'only'],
@@ -55,7 +55,7 @@ describe('jest-each', () => {
     ['describe'],
     ['fdescribe'],
     ['describe', 'only'],
-  ].forEach(keyPath => {
+  ]) {
     describe(`.${keyPath.join('.')}`, () => {
       test('throws error when there are additional words in first column heading', () => {
         const globalTestMocks = getGlobalTestMocks();
@@ -417,6 +417,30 @@ describe('jest-each', () => {
         );
       });
 
+      test.each([null, undefined])(
+        'calls global with title containing $key.path for %s',
+        value => {
+          const globalTestMocks = getGlobalTestMocks();
+          const eachObject = each.withGlobal(globalTestMocks)`
+          a
+          ${{foo: value}}
+        `;
+          const testFunction = get(eachObject, keyPath);
+          testFunction(
+            'interpolates object keyPath to value: $a.foo.bar',
+            noop,
+          );
+
+          const globalMock = get(globalTestMocks, keyPath);
+          expect(globalMock).toHaveBeenCalledTimes(1);
+          expect(globalMock).toHaveBeenCalledWith(
+            `interpolates object keyPath to value: ${value}`,
+            expectFunction,
+            undefined,
+          );
+        },
+      );
+
       test('calls global with title containing last seen object when $key.path is invalid', () => {
         const globalTestMocks = getGlobalTestMocks();
         const eachObject = each.withGlobal(globalTestMocks)`
@@ -465,12 +489,12 @@ describe('jest-each', () => {
         `;
 
         const testFunction = get(eachObject, keyPath);
-        testFunction('some test', noop, 10000);
+        testFunction('some test', noop, 10_000);
         const globalMock = get(globalTestMocks, keyPath);
         expect(globalMock).toHaveBeenCalledWith(
           'some test',
           expect.any(Function),
-          10000,
+          10_000,
         );
       });
 
@@ -499,8 +523,33 @@ describe('jest-each', () => {
           undefined,
         );
       });
+
+      test('interpolates a heading that contains regex metacharacters', () => {
+        const globalTestMocks = getGlobalTestMocks();
+        const eachObject = each.withGlobal(globalTestMocks)`
+          count(*) | expected
+          ${1}     | ${'one'}
+          ${2}     | ${'two'}
+        `;
+
+        const testFunction = get(eachObject, keyPath);
+        testFunction('rows: $count(*) is $expected', noop);
+
+        const globalMock = get(globalTestMocks, keyPath);
+        expect(globalMock).toHaveBeenCalledTimes(2);
+        expect(globalMock).toHaveBeenCalledWith(
+          'rows: 1 is one',
+          expectFunction,
+          undefined,
+        );
+        expect(globalMock).toHaveBeenCalledWith(
+          'rows: 2 is two',
+          expectFunction,
+          undefined,
+        );
+      });
     });
-  });
+  }
 
   describe('done callback', () => {
     test.each([
@@ -551,7 +600,7 @@ describe('jest-each', () => {
     );
   });
 
-  [
+  for (const keyPath of [
     ['xtest'],
     ['test', 'skip'],
     ['test', 'concurrent'],
@@ -560,7 +609,7 @@ describe('jest-each', () => {
     ['it', 'skip'],
     ['xdescribe'],
     ['describe', 'skip'],
-  ].forEach(keyPath => {
+  ]) {
     describe(`.${keyPath.join('.')}`, () => {
       test('calls global with given title', () => {
         const globalTestMocks = getGlobalTestMocks();
@@ -658,5 +707,5 @@ describe('jest-each', () => {
         );
       });
     });
-  });
+  }
 });

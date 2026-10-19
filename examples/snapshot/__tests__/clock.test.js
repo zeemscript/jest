@@ -2,12 +2,16 @@
 
 'use strict';
 
-import renderer from 'react-test-renderer';
+import {cleanup, render} from '@testing-library/react';
 import Clock from '../Clock';
 
-jest.useFakeTimers().setSystemTime(1482363367071);
+jest.useFakeTimers().setSystemTime(1_482_363_367_071);
 
 it('renders correctly', () => {
-  const tree = renderer.create(<Clock />).toJSON();
-  expect(tree).toMatchSnapshot();
+  const {container} = render(<Clock />);
+  try {
+    expect(container.firstChild).toMatchSnapshot();
+  } finally {
+    cleanup();
+  }
 });

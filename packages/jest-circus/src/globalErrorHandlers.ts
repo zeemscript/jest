@@ -5,37 +5,70 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type * as Process from 'node:process';
 import type {Circus} from '@jest/types';
 import {dispatchSync} from './state';
 
-const uncaught: NodeJS.UncaughtExceptionListener &
-  NodeJS.UnhandledRejectionListener = (error: unknown) => {
+const uncaughtExceptionListener: NodeJS.UncaughtExceptionListener = (
+  error: unknown,
+) => {
   dispatchSync({error, name: 'error'});
 };
 
+const unhandledRejectionListener: NodeJS.UnhandledRejectionListener = (
+  error: unknown,
+  promise: Promise<unknown>,
+) => {
+  dispatchSync({error, name: 'error', promise});
+};
+
+const rejectionHandledListener: NodeJS.RejectionHandledListener = (
+  promise: Promise<unknown>,
+) => {
+  dispatchSync({name: 'error_handled', promise});
+};
+
 export const injectGlobalErrorHandlers = (
-  parentProcess: NodeJS.Process,
+  parentProcess: typeof Process,
 ): Circus.GlobalErrorHandlers => {
-  const uncaughtException = process.listeners('uncaughtException').slice();
-  const unhandledRejection = process.listeners('unhandledRejection').slice();
+  // `rawListeners` keeps the wrapper a `once` listener is registered through,
+  // so restoring it does not turn it into a permanent one.
+  const uncaughtException = [
+    ...parentProcess.rawListeners('uncaughtException'),
+  ] as Array<NodeJS.UncaughtExceptionListener>;
+  const unhandledRejection = [
+    ...parentProcess.rawListeners('unhandledRejection'),
+  ] as Array<NodeJS.UnhandledRejectionListener>;
+  const rejectionHandled = [
+    ...parentProcess.rawListeners('rejectionHandled'),
+  ] as Array<NodeJS.RejectionHandledListener>;
   parentProcess.removeAllListeners('uncaughtException');
   parentProcess.removeAllListeners('unhandledRejection');
-  parentProcess.on('uncaughtException', uncaught);
-  parentProcess.on('unhandledRejection', uncaught);
-  return {uncaughtException, unhandledRejection};
+  parentProcess.removeAllListeners('rejectionHandled');
+  parentProcess.on('uncaughtException', uncaughtExceptionListener);
+  parentProcess.on('unhandledRejection', unhandledRejectionListener);
+  parentProcess.on('rejectionHandled', rejectionHandledListener);
+  return {rejectionHandled, uncaughtException, unhandledRejection};
 };
 
 export const restoreGlobalErrorHandlers = (
-  parentProcess: NodeJS.Process,
+  parentProcess: typeof Process,
   originalErrorHandlers: Circus.GlobalErrorHandlers,
 ): void => {
-  parentProcess.removeListener('uncaughtException', uncaught);
-  parentProcess.removeListener('unhandledRejection', uncaught);
+  parentProcess.removeListener('uncaughtException', uncaughtExceptionListener);
+  parentProcess.removeListener(
+    'unhandledRejection',
+    unhandledRejectionListener,
+  );
+  parentProcess.removeListener('rejectionHandled', rejectionHandledListener);
 
   for (const listener of originalErrorHandlers.uncaughtException) {
     parentProcess.on('uncaughtException', listener);
   }
   for (const listener of originalErrorHandlers.unhandledRejection) {
     parentProcess.on('unhandledRejection', listener);
+  }
+  for (const listener of originalErrorHandlers.rejectionHandled) {
+    parentProcess.on('rejectionHandled', listener);
   }
 };

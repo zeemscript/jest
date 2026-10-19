@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {readFileSync} from 'node:fs';
+import {readFileSync} from 'graceful-fs';
 import {jest} from '@jest/globals';
 // file origin: https://github.com/mdn/webassembly-examples/blob/2f2163287f86fe29deb162335bccca7d5d95ca4f/understanding-text-format/add.wasm
 // source code: https://github.com/mdn/webassembly-examples/blob/2f2163287f86fe29deb162335bccca7d5d95ca4f/understanding-text-format/add.was
@@ -45,14 +45,14 @@ test('supports imports from "data:application/wasm" URI with base64 encoding', a
 });
 
 test('imports from "data:application/wasm" URI without explicit encoding fail', async () => {
-  await expect(() =>
-    import(`data:application/wasm,${wasmFileBuffer.toString('base64')}`),
+  await expect(
+    () => import(`data:application/wasm,${wasmFileBuffer.toString('base64')}`),
   ).rejects.toThrow('Missing data URI encoding');
 });
 
 test('imports from "data:application/wasm" URI with invalid encoding fail', async () => {
-  await expect(() =>
-    import('data:application/wasm;charset=utf-8,oops'),
+  await expect(
+    () => import('data:application/wasm;charset=utf-8,oops'),
   ).rejects.toThrow('Invalid data URI encoding: charset=utf-8');
 });
 

@@ -7,563 +7,892 @@
 
 /// <reference lib="dom" />
 
+import {describe, expect, test} from 'tstyche';
+import type {AsymmetricMatcher} from '@jest/expect-utils';
 import {
-  expectAssignable,
-  expectError,
-  expectNotAssignable,
-  expectType,
-} from 'tsd-lite';
-import {
-  Mock,
-  Replaced,
-  SpiedClass,
-  SpiedFunction,
-  SpiedGetter,
-  SpiedSetter,
+  type Mock,
+  type Replaced,
+  type SpiedClass,
+  type SpiedFunction,
+  type SpiedGetter,
+  type SpiedSetter,
   fn,
   replaceProperty,
   spyOn,
 } from 'jest-mock';
 
-// jest.fn()
-
-expectType<Mock<() => Promise<string>>>(
-  fn(async () => 'value')
-    .mockClear()
-    .mockReset()
-    .mockImplementation(fn(async () => 'value'))
-    .mockImplementationOnce(fn(async () => 'value'))
-    .mockName('mock')
-    .mockResolvedValue('value')
-    .mockResolvedValueOnce('value')
-    .mockRejectedValue('error')
-    .mockRejectedValueOnce('error')
-    .mockReturnThis()
-    .mockReturnValue(Promise.resolve('value'))
-    .mockReturnValueOnce(Promise.resolve('value')),
-);
-
-expectType<Mock<() => string>>(
-  fn(() => 'value')
-    .mockClear()
-    .mockReset()
-    .mockImplementation(() => 'value')
-    .mockImplementationOnce(() => 'value')
-    .mockName('mock')
-    .mockReturnThis()
-    .mockReturnValue('value')
-    .mockReturnValueOnce('value'),
-);
-
-expectError(fn(() => 'value').mockReturnValue(Promise.resolve('value')));
-expectError(fn(() => 'value').mockReturnValueOnce(Promise.resolve('value')));
-
-expectError(fn(() => 'value').mockResolvedValue('value'));
-expectError(fn(() => 'value').mockResolvedValueOnce('value'));
-
-expectError(fn(() => 'value').mockRejectedValue('error'));
-expectError(fn(() => 'value').mockRejectedValueOnce('error'));
-
-expectAssignable<Function>(fn()); // eslint-disable-line @typescript-eslint/ban-types
-
-expectType<Mock<(...args: Array<unknown>) => unknown>>(fn());
-expectType<Mock<() => void>>(fn(() => {}));
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  fn((a: string, b?: number) => true),
-);
-expectType<Mock<(e: any) => never>>(
-  fn((e: any) => {
-    throw new Error();
-  }),
-);
-expectError(fn('moduleName'));
-
-declare const mockFnImpl: (this: Date, a: string, b?: number) => boolean;
-const mockFn = fn(mockFnImpl);
-const mockAsyncFn = fn(async (p: boolean) => 'value');
-
-expectType<boolean>(mockFn('one', 2));
-expectType<Promise<string>>(mockAsyncFn(false));
-expectError(mockFn());
-expectError(mockAsyncFn());
-
-const MockObject = fn((credentials: string) => ({
-  connect() {
-    return fn();
-  },
-  disconnect() {
-    return;
-  },
-}));
-
-expectType<{
-  connect(): Mock<(...args: Array<unknown>) => unknown>;
-  disconnect(): void;
-}>(new MockObject('credentials'));
-expectError(new MockObject());
-
-expectType<((a: string, b?: number | undefined) => boolean) | undefined>(
-  mockFn.getMockImplementation(),
-);
-expectError(mockFn.getMockImplementation('some-mock'));
-
-expectType<string>(mockFn.getMockName());
-expectError(mockFn.getMockName('some-mock'));
-
-expectType<number>(mockFn.mock.calls.length);
-
-expectType<string>(mockFn.mock.calls[0][0]);
-expectType<number | undefined>(mockFn.mock.calls[0][1]);
-
-expectType<string>(mockFn.mock.calls[1][0]);
-expectType<number | undefined>(mockFn.mock.calls[1][1]);
-
-expectType<[a: string, b?: number | undefined] | undefined>(
-  mockFn.mock.lastCall,
-);
-
-expectType<Array<number>>(mockFn.mock.invocationCallOrder);
-
-expectType<
-  Array<{
-    connect(): Mock<(...args: Array<unknown>) => unknown>;
-    disconnect(): void;
-  }>
->(MockObject.mock.instances);
-
-const returnValue = mockFn.mock.results[0];
-
-expectType<'incomplete' | 'return' | 'throw'>(returnValue.type);
-expectType<unknown>(returnValue.value);
-
-if (returnValue.type === 'incomplete') {
-  expectType<undefined>(returnValue.value);
-}
-
-if (returnValue.type === 'return') {
-  expectType<boolean>(returnValue.value);
-}
-
-if (returnValue.type === 'throw') {
-  expectType<unknown>(returnValue.value);
-}
-
-expectType<Array<Date>>(mockFn.mock.contexts);
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockClear(),
-);
-expectError(mockFn.mockClear('some-mock'));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockReset(),
-);
-expectError(mockFn.mockClear('some-mock'));
-
-expectType<void>(mockFn.mockRestore());
-expectError(mockFn.mockClear('some-mock'));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockImplementation((a, b) => {
-    expectType<string>(a);
-    expectType<number | undefined>(b);
-    return false;
-  }),
-);
-expectError(mockFn.mockImplementation((a: number) => false));
-expectError(mockFn.mockImplementation(a => 'false'));
-expectError(mockFn.mockImplementation());
-
-expectType<Mock<(p: boolean) => Promise<string>>>(
-  mockAsyncFn.mockImplementation(async a => {
-    expectType<boolean>(a);
-    return 'mock value';
-  }),
-);
-expectError(mockAsyncFn.mockImplementation(a => 'mock value'));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockImplementationOnce((a, b) => {
-    expectType<string>(a);
-    expectType<number | undefined>(b);
-    return false;
-  }),
-);
-expectError(mockFn.mockImplementationOnce((a: number) => false));
-expectError(mockFn.mockImplementationOnce(a => 'false'));
-expectError(mockFn.mockImplementationOnce());
-
-expectType<Mock<(p: boolean) => Promise<string>>>(
-  mockAsyncFn.mockImplementationOnce(async a => {
-    expectType<boolean>(a);
-    return 'mock value';
-  }),
-);
-expectError(mockAsyncFn.mockImplementationOnce(a => 'mock value'));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockName('mockedFunction'),
-);
-expectError(mockFn.mockName(123));
-expectError(mockFn.mockName());
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockReturnThis(),
-);
-expectError(mockFn.mockReturnThis('this'));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockReturnValue(false),
-);
-expectError(mockFn.mockReturnValue('true'));
-expectError(mockFn.mockReturnValue());
-
-expectType<Mock<(p: boolean) => Promise<string>>>(
-  mockAsyncFn.mockReturnValue(Promise.resolve('mock value')),
-);
-expectError(mockAsyncFn.mockReturnValue(Promise.resolve(true)));
-
-expectType<Mock<(a: string, b?: number | undefined) => boolean>>(
-  mockFn.mockReturnValueOnce(false),
-);
-expectError(mockFn.mockReturnValueOnce('true'));
-expectError(mockFn.mockReturnValueOnce());
-
-expectType<Mock<(p: boolean) => Promise<string>>>(
-  mockAsyncFn.mockReturnValueOnce(Promise.resolve('mock value')),
-);
-expectError(mockAsyncFn.mockReturnValueOnce(Promise.resolve(true)));
-
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockResolvedValue('Mock value'),
-);
-expectError(fn(() => Promise.resolve('')).mockResolvedValue(123));
-expectError(fn(() => Promise.resolve('')).mockResolvedValue());
-
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockResolvedValueOnce('Mock value'),
-);
-expectError(fn(() => Promise.resolve('')).mockResolvedValueOnce(123));
-expectError(fn(() => Promise.resolve('')).mockResolvedValueOnce());
-
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockRejectedValue(new Error('Mock error')),
-);
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockRejectedValue('Mock error'),
-);
-expectError(fn(() => Promise.resolve('')).mockRejectedValue());
-
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockRejectedValueOnce(new Error('Mock error')),
-);
-expectType<Mock<() => Promise<string>>>(
-  fn(() => Promise.resolve('')).mockRejectedValueOnce('Mock error'),
-);
-expectError(fn(() => Promise.resolve('')).mockRejectedValueOnce());
-
-expectType<void>(mockFn.withImplementation(mockFnImpl, () => {}));
-expectType<Promise<void>>(
-  mockFn.withImplementation(mockFnImpl, async () => {}),
-);
-
-expectError(mockFn.withImplementation(mockFnImpl));
-
-// jest.spyOn()
-
-const spiedArray = ['a', 'b'];
-
-const spiedFunction = () => {};
-
-const spiedObject = {
-  _propertyB: false,
-
-  methodA() {
-    return true;
-  },
-  methodB(a: string, b: number) {
-    return;
-  },
-  methodC(e: any) {
-    throw new Error();
-  },
-
-  propertyA: 'abc',
-
-  set propertyB(value) {
-    this._propertyB = value;
-  },
-  get propertyB() {
-    return this._propertyB;
-  },
-};
-
-type IndexSpiedObject = {
-  [key: string]: Record<string, any>;
-
-  methodA(): boolean;
-  methodB(a: string, b: number): void;
-  methodC: (c: number) => boolean;
-  methodE: (e: any) => never;
-
-  propertyA: {a: string};
-};
-
-const indexSpiedObject: IndexSpiedObject = {
-  methodA() {
-    return true;
-  },
-  methodB(a: string, b: number) {
-    return;
-  },
-  methodC(c: number) {
-    return true;
-  },
-  methodE(e: any) {
-    throw new Error();
-  },
-
-  propertyA: {a: 'abc'},
-};
-
-const spy = spyOn(spiedObject, 'methodA');
-
-expectNotAssignable<Function>(spy); // eslint-disable-line @typescript-eslint/ban-types
-expectError(spy());
-expectError(new spy());
-
-expectType<SpiedFunction<typeof spiedObject.methodA>>(
-  spyOn(spiedObject, 'methodA'),
-);
-expectType<SpiedFunction<typeof spiedObject.methodB>>(
-  spyOn(spiedObject, 'methodB'),
-);
-expectType<SpiedFunction<typeof spiedObject.methodC>>(
-  spyOn(spiedObject, 'methodC'),
-);
-
-expectType<SpiedGetter<typeof spiedObject.propertyB>>(
-  spyOn(spiedObject, 'propertyB', 'get'),
-);
-expectType<SpiedSetter<typeof spiedObject.propertyB>>(
-  spyOn(spiedObject, 'propertyB', 'set'),
-);
-expectError(spyOn(spiedObject, 'propertyB'));
-expectError(spyOn(spiedObject, 'methodB', 'get'));
-expectError(spyOn(spiedObject, 'methodB', 'set'));
-
-expectType<SpiedGetter<typeof spiedObject.propertyA>>(
-  spyOn(spiedObject, 'propertyA', 'get'),
-);
-expectType<SpiedSetter<typeof spiedObject.propertyA>>(
-  spyOn(spiedObject, 'propertyA', 'set'),
-);
-expectError(spyOn(spiedObject, 'propertyA'));
-
-expectError(spyOn(spiedObject, 'notThere'));
-expectError(spyOn('abc', 'methodA'));
-expectError(spyOn(123, 'methodA'));
-expectError(spyOn(true, 'methodA'));
-expectError(spyOn(spiedObject));
-expectError(spyOn());
-
-expectType<SpiedFunction<typeof Array.isArray>>(
-  spyOn(spiedArray as unknown as ArrayConstructor, 'isArray'),
-);
-expectError(spyOn(spiedArray, 'isArray'));
-
-expectType<SpiedFunction<typeof spiedFunction.toString>>(
-  spyOn(spiedFunction as unknown as Function, 'toString'), // eslint-disable-line @typescript-eslint/ban-types
-);
-expectError(spyOn(spiedFunction, 'toString'));
-
-expectType<SpiedClass<typeof Date>>(spyOn(globalThis, 'Date'));
-expectType<SpiedFunction<typeof Date.now>>(spyOn(Date, 'now'));
-
-// object with index signatures
-
-expectType<SpiedFunction<typeof indexSpiedObject.methodA>>(
-  spyOn(indexSpiedObject, 'methodA'),
-);
-expectType<SpiedFunction<typeof indexSpiedObject.methodB>>(
-  spyOn(indexSpiedObject, 'methodB'),
-);
-expectType<SpiedFunction<typeof indexSpiedObject.methodC>>(
-  spyOn(indexSpiedObject, 'methodC'),
-);
-expectType<SpiedFunction<typeof indexSpiedObject.methodE>>(
-  spyOn(indexSpiedObject, 'methodE'),
-);
-
-expectType<SpiedGetter<typeof indexSpiedObject.propertyA>>(
-  spyOn(indexSpiedObject, 'propertyA', 'get'),
-);
-expectType<SpiedSetter<typeof indexSpiedObject.propertyA>>(
-  spyOn(indexSpiedObject, 'propertyA', 'set'),
-);
-expectError(spyOn(indexSpiedObject, 'propertyA'));
-
-expectError(spyOn(indexSpiedObject, 'notThere'));
-
-// interface with optional properties
-
-class SomeClass {
-  constructor(one: string, two?: boolean) {}
-
-  methodA() {
-    return true;
+describe('jest.fn()', () => {
+  const mockFnImpl: (this: Date, a: string, b?: number) => boolean = (a, b) =>
+    true;
+
+  const mockFn = fn(mockFnImpl);
+  const mockAsyncFn = fn(async (p: boolean) => 'value');
+
+  const MockObject = fn((credentials: string) => ({
+    connect() {
+      return fn();
+    },
+    disconnect() {
+      return;
+    },
+  }));
+
+  test('when sync function is provided, returned object can be chained', () => {
+    expect(
+      fn(() => 'value')
+        .mockClear()
+        .mockReset()
+        .mockImplementation(() => 'value')
+        .mockImplementationOnce(() => 'value')
+        .mockName('mock')
+        .mockReturnThis()
+        .mockReturnValue('value')
+        .mockReturnValueOnce('value'),
+    ).type.toBe<Mock<() => string>>();
+
+    expect(fn(() => 'value').mockReturnValue).type.not.toBeCallableWith(
+      Promise.resolve('value'),
+    );
+    expect(fn(() => 'value').mockReturnValueOnce).type.not.toBeCallableWith(
+      Promise.resolve('value'),
+    );
+  });
+
+  test('when async function is provided, returned object can be chained', () => {
+    expect(
+      fn(async () => 'value')
+        .mockClear()
+        .mockReset()
+        .mockImplementation(fn(async () => 'value'))
+        .mockImplementationOnce(fn(async () => 'value'))
+        .mockName('mock')
+        .mockResolvedValue('value')
+        .mockResolvedValueOnce('value')
+        .mockRejectedValue('error')
+        .mockRejectedValueOnce('error')
+        .mockReturnThis()
+        .mockReturnValue(Promise.resolve('value'))
+        .mockReturnValueOnce(Promise.resolve('value')),
+    ).type.toBe<Mock<() => Promise<string>>>();
+
+    expect(fn(() => 'value').mockResolvedValue).type.not.toBeCallableWith(
+      'value',
+    );
+    expect(fn(() => 'value').mockResolvedValueOnce).type.not.toBeCallableWith(
+      'value',
+    );
+
+    expect(fn(() => 'value').mockRejectedValue).type.not.toBeCallableWith(
+      'error',
+    );
+    expect(fn(() => 'value').mockRejectedValueOnce).type.not.toBeCallableWith(
+      'error',
+    );
+  });
+
+  test('.whenCalledWith() constrains args by Parameters<T>', () => {
+    const typedFn = fn((a: string, b: number) => true);
+    const asymMatcher = {} as AsymmetricMatcher;
+
+    expect(typedFn.whenCalledWith).type.toBeCallableWith('foo', 42);
+    expect(typedFn.whenCalledWith).type.toBeCallableWith(asymMatcher, 42);
+    expect(typedFn.whenCalledWith).type.toBeCallableWith('foo', asymMatcher);
+    expect(typedFn.whenCalledWith).type.toBeCallableWith(
+      asymMatcher,
+      asymMatcher,
+    );
+
+    expect(typedFn.whenCalledWith).type.not.toBeCallableWith(42, 'foo');
+    expect(typedFn.whenCalledWith).type.not.toBeCallableWith('foo');
+    expect(typedFn.whenCalledWith).type.not.toBeCallableWith(
+      'foo',
+      42,
+      'extra',
+    );
+  });
+
+  test('.whenCalledWith() chained .mockReturnValue is constrained by ReturnType<T>', () => {
+    const typedFn = fn((a: string) => true);
+
+    expect(typedFn.whenCalledWith('foo').mockReturnValue).type.toBeCallableWith(
+      true,
+    );
+    expect(
+      typedFn.whenCalledWith('foo').mockReturnValue,
+    ).type.not.toBeCallableWith('not-a-boolean');
+  });
+
+  test('.whenCalledWith() chained .mockResolvedValue works on async mocks', () => {
+    const asyncFn = fn(async (id: number) => 'data');
+
+    expect(asyncFn.whenCalledWith(1).mockResolvedValue).type.toBeCallableWith(
+      'data',
+    );
+    expect(
+      asyncFn.whenCalledWith(1).mockResolvedValueOnce,
+    ).type.toBeCallableWith('data');
+    expect(asyncFn.whenCalledWith(1).mockRejectedValue).type.toBeCallableWith(
+      new Error('boom'),
+    );
+  });
+
+  test('.whenCalledWith() returns Mock<T> for further chaining', () => {
+    const typedFn = fn((a: string) => true);
+
+    expect(typedFn.whenCalledWith('foo')).type.toBe<
+      Mock<(a: string) => boolean>
+    >();
+    expect(
+      typedFn
+        .whenCalledWith('foo')
+        .mockReturnValueOnce(true)
+        .mockReturnValue(false),
+    ).type.toBe<Mock<(a: string) => boolean>>();
+  });
+
+  test('.whenCalledWith() on UnknownFunction default accepts any args', () => {
+    const looseFn = fn();
+
+    expect(looseFn.whenCalledWith).type.toBeCallableWith();
+    expect(looseFn.whenCalledWith).type.toBeCallableWith('anything');
+    expect(looseFn.whenCalledWith).type.toBeCallableWith(1, 'two', {three: 3});
+  });
+
+  test('.whenCalledWith() handles optional args', () => {
+    const optionalFn = fn((a: string, b?: boolean) => 1);
+
+    expect(optionalFn.whenCalledWith).type.toBeCallableWith('x');
+    expect(optionalFn.whenCalledWith).type.toBeCallableWith('x', true);
+    expect(optionalFn.whenCalledWith).type.toBeCallableWith('x', undefined);
+
+    expect(optionalFn.whenCalledWith).type.not.toBeCallableWith();
+    expect(optionalFn.whenCalledWith).type.not.toBeCallableWith('x', 'true');
+    expect(optionalFn.whenCalledWith).type.not.toBeCallableWith(
+      'x',
+      true,
+      false,
+    );
+  });
+
+  test('.whenCalledWith() handles void return types', () => {
+    const voidFn = fn(() => {});
+    const asyncVoidFn = fn(async () => {});
+
+    expect(voidFn.whenCalledWith().mockReturnValue).type.toBeCallableWith();
+    expect(voidFn.whenCalledWith().mockReturnValue).type.toBeCallableWith(
+      undefined,
+    );
+    expect(voidFn.whenCalledWith().mockReturnValue).type.not.toBeCallableWith(
+      'value',
+    );
+
+    expect(
+      asyncVoidFn.whenCalledWith().mockResolvedValue,
+    ).type.toBeCallableWith();
+    expect(
+      asyncVoidFn.whenCalledWith().mockResolvedValue,
+    ).type.toBeCallableWith(undefined);
+    expect(
+      asyncVoidFn.whenCalledWith().mockResolvedValue,
+    ).type.not.toBeCallableWith('value');
+  });
+
+  test('.whenCalledWith() handles variadic / rest args', () => {
+    const allStrings = fn((...args: Array<string>) => 1);
+    const headTail = fn((head: string, ...tail: Array<number>) => 1);
+
+    expect(allStrings.whenCalledWith).type.toBeCallableWith();
+    expect(allStrings.whenCalledWith).type.toBeCallableWith('a');
+    expect(allStrings.whenCalledWith).type.toBeCallableWith('a', 'b', 'c');
+    expect(allStrings.whenCalledWith).type.not.toBeCallableWith('a', 1);
+
+    expect(headTail.whenCalledWith).type.toBeCallableWith('a');
+    expect(headTail.whenCalledWith).type.toBeCallableWith('a', 1);
+    expect(headTail.whenCalledWith).type.toBeCallableWith('a', 1, 2, 3);
+    expect(headTail.whenCalledWith).type.not.toBeCallableWith();
+    expect(headTail.whenCalledWith).type.not.toBeCallableWith(1);
+    expect(headTail.whenCalledWith).type.not.toBeCallableWith('a', 1, 'b');
+  });
+
+  test('.whenCalledWith() preserves generics with conditional return types', () => {
+    type ArrayLike = Array<string | number>;
+    type ScalarLike = string | number;
+    type GenericFn = <T extends Record<string, ArrayLike | ScalarLike>>(
+      fields?: T,
+    ) => {
+      [K in keyof T]: T[K] extends ArrayLike ? Array<string> : string;
+    };
+    const generic = fn() as unknown as Mock<GenericFn>;
+
+    expect(
+      generic.whenCalledWith({a: 1, b: [2, 3]}).mockReturnValue,
+    ).type.toBeCallableWith({a: '1', b: ['2', '3']});
+  });
+
+  test('.whenCalledWith() preserves generics through identity functions', () => {
+    const identity = fn() as unknown as Mock<<T>(x: T) => T>;
+
+    expect(identity.whenCalledWith(42).mockReturnValue).type.toBeCallableWith(
+      42,
+    );
+    expect(
+      identity.whenCalledWith('hello').mockReturnValue,
+    ).type.toBeCallableWith('hello');
+  });
+
+  test('.whenCalledWith() chained .mockImplementation infers T', () => {
+    const typedFn = fn((a: string) => true);
+
+    expect(
+      typedFn.whenCalledWith('foo').mockImplementation,
+    ).type.toBeCallableWith((a: string) => true);
+    expect(
+      typedFn.whenCalledWith('foo').mockImplementation,
+    ).type.not.toBeCallableWith((a: string) => 'wrong-return');
+    expect(
+      typedFn.whenCalledWith('foo').mockImplementation,
+    ).type.not.toBeCallableWith((a: number) => true);
+  });
+
+  test('models typings of mocked function', () => {
+    expect(fn()).type.toBeAssignableTo<Function>();
+
+    expect(fn()).type.toBe<Mock<(...args: Array<unknown>) => unknown>>();
+    expect(fn(() => {})).type.toBe<Mock<() => void>>();
+    expect(fn((a: string, b?: number) => true)).type.toBe<
+      Mock<(a: string, b?: number | undefined) => boolean>
+    >();
+    expect(
+      fn((e: any) => {
+        throw new Error();
+      }),
+    ).type.toBe<Mock<(e: any) => never>>();
+
+    expect(fn).type.not.toBeCallableWith('moduleName');
+  });
+
+  test('infers argument and return types of mocked function', () => {
+    expect(mockFn('one', 2)).type.toBe<boolean>();
+    expect(mockAsyncFn(false)).type.toBe<Promise<string>>();
+
+    expect(mockFn).type.not.toBeCallableWith();
+    expect(mockAsyncFn).type.not.toBeCallableWith();
+  });
+
+  test('infers argument and return types of mocked object', () => {
+    expect(new MockObject('credentials')).type.toBe<{
+      connect(): Mock<(...args: Array<unknown>) => unknown>;
+      disconnect(): void;
+    }>();
+
+    expect(MockObject).type.not.toBeConstructableWith();
+  });
+
+  test('.getMockImplementation()', () => {
+    expect(mockFn.getMockImplementation()).type.toBe<
+      ((this: Date, a: string, b?: number | undefined) => boolean) | undefined
+    >();
+
+    expect(mockFn.getMockImplementation).type.not.toBeCallableWith('some-mock');
+  });
+
+  test('.getMockName()', () => {
+    expect(mockFn.getMockName()).type.toBe<string>();
+
+    expect(mockFn.getMockName).type.not.toBeCallableWith('some-mock');
+  });
+
+  test('.mock', () => {
+    expect(mockFn.mock.calls.length).type.toBe<number>();
+
+    expect(mockFn.mock.calls[0][0]).type.toBe<string>();
+    expect(mockFn.mock.calls[0][1]).type.toBe<number | undefined>();
+
+    expect(mockFn.mock.calls[1][0]).type.toBe<string>();
+    expect(mockFn.mock.calls[1][1]).type.toBe<number | undefined>();
+
+    expect(mockFn.mock.contexts).type.toBe<Array<Date>>();
+
+    expect(mockFn.mock.lastCall).type.toBe<
+      [a: string, b?: number | undefined] | undefined
+    >();
+
+    expect(mockFn.mock.invocationCallOrder).type.toBe<Array<number>>();
+
+    expect(MockObject.mock.instances).type.toBe<
+      Array<{
+        connect(): Mock<(...args: Array<unknown>) => unknown>;
+        disconnect(): void;
+      }>
+    >();
+
+    const returnValue = mockFn.mock.results[0];
+
+    expect(returnValue.type).type.toBe<'incomplete' | 'return' | 'throw'>();
+    expect(returnValue.value).type.toBe<unknown>();
+
+    if (returnValue.type === 'incomplete') {
+      expect(returnValue.value).type.toBe<undefined>();
+    }
+
+    if (returnValue.type === 'return') {
+      expect(returnValue.value).type.toBe<boolean>();
+    }
+
+    if (returnValue.type === 'throw') {
+      expect(returnValue.value).type.toBe<unknown>();
+    }
+  });
+
+  test('.mockClear()', () => {
+    expect(mockFn.mockClear()).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockClear).type.not.toBeCallableWith('some-mock');
+  });
+
+  test('.mockReset()', () => {
+    expect(mockFn.mockReset()).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockReset).type.not.toBeCallableWith('some-mock');
+  });
+
+  test('.mockRestore()', () => {
+    expect(mockFn.mockRestore()).type.toBe<void>();
+
+    expect(mockFn.mockRestore).type.not.toBeCallableWith('some-mock');
+  });
+
+  test('.mockImplementation()', () => {
+    expect(
+      mockFn.mockImplementation((a, b) => {
+        expect(a).type.toBe<string>();
+        expect(b).type.toBe<number | undefined>();
+        return false;
+      }),
+    ).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockImplementation).type.not.toBeCallableWith(
+      (a: number) => false,
+    );
+    expect(mockFn.mockImplementation).type.not.toBeCallableWith(() => 'false');
+    expect(mockFn.mockImplementation).type.not.toBeCallableWith();
+
+    expect(
+      mockAsyncFn.mockImplementation(async a => {
+        expect(a).type.toBe<boolean>();
+        return 'mock value';
+      }),
+    ).type.toBe<Mock<(p: boolean) => Promise<string>>>();
+
+    expect(mockAsyncFn.mockImplementation).type.not.toBeCallableWith(
+      () => 'mock value',
+    );
+  });
+
+  test('.mockImplementationOnce()', () => {
+    expect(
+      mockFn.mockImplementationOnce((a, b) => {
+        expect(a).type.toBe<string>();
+        expect(b).type.toBe<number | undefined>();
+        return false;
+      }),
+    ).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockImplementationOnce).type.not.toBeCallableWith(
+      (a: number) => false,
+    );
+    expect(mockFn.mockImplementationOnce).type.not.toBeCallableWith(
+      () => 'false',
+    );
+    expect(mockFn.mockImplementationOnce).type.not.toBeCallableWith();
+
+    expect(
+      mockAsyncFn.mockImplementationOnce(async a => {
+        expect(a).type.toBe<boolean>();
+        return 'mock value';
+      }),
+    ).type.toBe<Mock<(p: boolean) => Promise<string>>>();
+    expect(mockAsyncFn.mockImplementationOnce).type.not.toBeCallableWith(
+      () => 'mock value',
+    );
+  });
+
+  test('.mockName()', () => {
+    expect(mockFn.mockName('mockedFunction')).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockName).type.not.toBeCallableWith(123);
+    expect(mockFn.mockName).type.not.toBeCallableWith();
+  });
+
+  test('.mockReturnThis()', () => {
+    expect(mockFn.mockReturnThis()).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockReturnThis).type.not.toBeCallableWith('this');
+  });
+
+  test('.mockReturnValue()', () => {
+    expect(mockFn.mockReturnValue(false)).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+
+    expect(mockFn.mockReturnValue).type.not.toBeCallableWith('true');
+    expect(mockFn.mockReturnValue).type.not.toBeCallableWith();
+
+    expect(
+      mockAsyncFn.mockReturnValue(Promise.resolve('mock value')),
+    ).type.toBe<Mock<(p: boolean) => Promise<string>>>();
+
+    expect(mockAsyncFn.mockReturnValue).type.not.toBeCallableWith(
+      Promise.resolve(true),
+    );
+  });
+
+  test('.mockReturnValueOnce()', () => {
+    expect(mockFn.mockReturnValueOnce(false)).type.toBe<
+      Mock<(this: Date, a: string, b?: number | undefined) => boolean>
+    >();
+    expect(mockFn.mockReturnValueOnce).type.not.toBeCallableWith('true');
+
+    expect(mockFn.mockReturnValueOnce).type.not.toBeCallableWith();
+
+    expect(
+      mockAsyncFn.mockReturnValueOnce(Promise.resolve('mock value')),
+    ).type.toBe<Mock<(p: boolean) => Promise<string>>>();
+
+    expect(mockAsyncFn.mockReturnValueOnce).type.not.toBeCallableWith(
+      Promise.resolve(true),
+    );
+  });
+
+  test('.mockResolvedValue()', () => {
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValue('Mock value'),
+    ).type.toBe<Mock<() => Promise<string>>>();
+
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValue,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValue,
+    ).type.not.toBeCallableWith();
+  });
+
+  test('.mockResolvedValueOnce()', () => {
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValueOnce('Mock value'),
+    ).type.toBe<Mock<() => Promise<string>>>();
+
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValueOnce,
+    ).type.not.toBeCallableWith(123);
+    expect(
+      fn(() => Promise.resolve('')).mockResolvedValueOnce,
+    ).type.not.toBeCallableWith();
+  });
+
+  test('.mockRejectedValue()', () => {
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValue(new Error('Mock error')),
+    ).type.toBe<Mock<() => Promise<string>>>();
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValue('Mock error'),
+    ).type.toBe<Mock<() => Promise<string>>>();
+
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValue,
+    ).type.not.toBeCallableWith();
+  });
+
+  test('.mockRejectedValueOnce()', () => {
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValueOnce(
+        new Error('Mock error'),
+      ),
+    ).type.toBe<Mock<() => Promise<string>>>();
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValueOnce('Mock error'),
+    ).type.toBe<Mock<() => Promise<string>>>();
+
+    expect(
+      fn(() => Promise.resolve('')).mockRejectedValueOnce,
+    ).type.not.toBeCallableWith();
+  });
+
+  test('.mockResolvedValue() / .mockRejectedValue() see overloaded return types', () => {
+    // Regression for #16174. `pg.Client['end']` is the canonical example: the
+    // promise-returning overload is shadowed by a callback overload that
+    // returns `void`, so `ReturnType` collapses to `void` and the resolve /
+    // reject value types infer `never`. Walking the overload list and
+    // unioning return types lets the Promise-shaped overload survive.
+    interface OverloadedEnd {
+      (): Promise<void>;
+      (callback: (err: Error) => void): void;
+    }
+    const overloaded = fn<OverloadedEnd>();
+
+    expect(overloaded.mockResolvedValue).type.toBeCallableWith(undefined);
+    expect(overloaded.mockResolvedValueOnce).type.toBeCallableWith(undefined);
+    expect(overloaded.mockRejectedValue).type.toBeCallableWith(
+      new Error('boom'),
+    );
+    expect(overloaded.mockRejectedValueOnce).type.toBeCallableWith(
+      new Error('boom'),
+    );
+  });
+
+  test('.withImplementation()', () => {
+    expect(mockFn.withImplementation(mockFnImpl, () => {})).type.toBe<void>();
+    expect(mockFn.withImplementation(mockFnImpl, async () => {})).type.toBe<
+      Promise<void>
+    >();
+
+    expect(mockFn.withImplementation).type.not.toBeCallableWith(mockFnImpl);
+  });
+});
+
+describe('jest.spyOn()', () => {
+  const spiedArray = ['a', 'b'];
+
+  const spiedFunction = () => {};
+
+  const spiedObject = {
+    _propertyB: false,
+
+    methodA() {
+      return true;
+    },
+    methodB(a: string, b: number) {
+      return;
+    },
+    methodC(e: any) {
+      throw new Error();
+    },
+
+    propertyA: 'abc',
+
+    set propertyB(value) {
+      this._propertyB = value;
+    },
+    get propertyB() {
+      return this._propertyB;
+    },
+  };
+
+  type IndexSpiedObject = {
+    [key: string]: Record<string, any>;
+
+    methodA(): boolean;
+    methodB(a: string, b: number): void;
+    methodC: (c: number) => boolean;
+    methodE: (e: any) => never;
+
+    propertyA: {a: string};
+  };
+
+  const indexSpiedObject: IndexSpiedObject = {
+    methodA() {
+      return true;
+    },
+    methodB(a: string, b: number) {
+      return;
+    },
+    methodC(c: number) {
+      return true;
+    },
+    methodE(e: any) {
+      throw new Error();
+    },
+
+    propertyA: {a: 'abc'},
+  };
+
+  const spy = spyOn(spiedObject, 'methodA');
+
+  test('models typings of spied object', () => {
+    expect(spy).type.not.toBeAssignableTo<Function>();
+
+    expect(spy()).type.toRaiseError('This expression is not callable.');
+    expect(new spy()).type.toRaiseError(
+      'This expression is not constructable.',
+    );
+
+    expect(spyOn(spiedObject, 'methodA')).type.toBe<
+      SpiedFunction<typeof spiedObject.methodA>
+    >();
+    expect(spyOn(spiedObject, 'methodB')).type.toBe<
+      SpiedFunction<typeof spiedObject.methodB>
+    >();
+    expect(spyOn(spiedObject, 'methodC')).type.toBe<
+      SpiedFunction<typeof spiedObject.methodC>
+    >();
+
+    expect(spyOn(spiedObject, 'propertyB', 'get')).type.toBe<
+      SpiedGetter<typeof spiedObject.propertyB>
+    >();
+    expect(spyOn(spiedObject, 'propertyB', 'set')).type.toBe<
+      SpiedSetter<typeof spiedObject.propertyB>
+    >();
+    expect(spyOn).type.not.toBeCallableWith(spiedObject, 'propertyB');
+    expect(spyOn).type.not.toBeCallableWith(spiedObject, 'methodB', 'get');
+    expect(spyOn).type.not.toBeCallableWith(spiedObject, 'methodB', 'set');
+
+    expect(spyOn(spiedObject, 'propertyA', 'get')).type.toBe<
+      SpiedGetter<typeof spiedObject.propertyA>
+    >();
+    expect(spyOn(spiedObject, 'propertyA', 'set')).type.toBe<
+      SpiedSetter<typeof spiedObject.propertyA>
+    >();
+    expect(spyOn).type.not.toBeCallableWith(spiedObject, 'propertyA');
+
+    expect(spyOn).type.not.toBeCallableWith(spiedObject, 'notThere');
+    expect(spyOn).type.not.toBeCallableWith('abc', 'methodA');
+    expect(spyOn).type.not.toBeCallableWith(123, 'methodA');
+    expect(spyOn).type.not.toBeCallableWith(true, 'methodA');
+    expect(spyOn).type.not.toBeCallableWith(spiedObject);
+    expect(spyOn).type.not.toBeCallableWith();
+
+    expect(
+      spyOn(spiedArray as unknown as ArrayConstructor, 'isArray'),
+    ).type.toBe<SpiedFunction<typeof Array.isArray>>();
+    expect(spyOn).type.not.toBeCallableWith(spiedArray, 'isArray');
+
+    expect(spyOn(spiedFunction as unknown as Function, 'toString')).type.toBe<
+      SpiedFunction<typeof spiedFunction.toString>
+    >();
+    expect(spyOn).type.not.toBeCallableWith(spiedFunction, 'toString');
+
+    expect(spyOn(globalThis, 'Date')).type.toBe<SpiedClass<typeof Date>>();
+    expect(spyOn(Date, 'now')).type.toBe<SpiedFunction<typeof Date.now>>();
+  });
+
+  test('handles object with index signature', () => {
+    expect(spyOn(indexSpiedObject, 'methodA')).type.toBe<
+      SpiedFunction<typeof indexSpiedObject.methodA>
+    >();
+    expect(spyOn(indexSpiedObject, 'methodB')).type.toBe<
+      SpiedFunction<typeof indexSpiedObject.methodB>
+    >();
+    expect(spyOn(indexSpiedObject, 'methodC')).type.toBe<
+      SpiedFunction<typeof indexSpiedObject.methodC>
+    >();
+    expect(spyOn(indexSpiedObject, 'methodE')).type.toBe<
+      SpiedFunction<typeof indexSpiedObject.methodE>
+    >();
+
+    expect(spyOn(indexSpiedObject, 'propertyA', 'get')).type.toBe<
+      SpiedGetter<typeof indexSpiedObject.propertyA>
+    >();
+    expect(spyOn(indexSpiedObject, 'propertyA', 'set')).type.toBe<
+      SpiedSetter<typeof indexSpiedObject.propertyA>
+    >();
+    expect(spyOn).type.not.toBeCallableWith(indexSpiedObject, 'propertyA');
+
+    expect(spyOn).type.not.toBeCallableWith(indexSpiedObject, 'notThere');
+  });
+
+  test('handles interface with optional properties', () => {
+    class SomeClass {
+      constructor(one: string, two?: boolean) {}
+
+      methodA() {
+        return true;
+      }
+      methodB(a: string, b?: number) {
+        return;
+      }
+    }
+
+    interface OptionalInterface {
+      constructorA?: (new (one: string) => SomeClass) | undefined;
+      constructorB: new (one: string, two: boolean) => SomeClass;
+
+      propertyA?: number | undefined;
+      propertyB?: number;
+      propertyC: number | undefined;
+      propertyD: string;
+
+      methodA?: ((a: boolean) => void) | undefined;
+      methodB: (b: string) => boolean;
+    }
+
+    const optionalSpiedObject = {} as OptionalInterface;
+
+    expect(spyOn(optionalSpiedObject, 'constructorA')).type.toBe<
+      SpiedClass<NonNullable<typeof optionalSpiedObject.constructorA>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'constructorB')).type.toBe<
+      SpiedClass<typeof optionalSpiedObject.constructorB>
+    >();
+
+    expect(spyOn).type.not.toBeCallableWith(
+      optionalSpiedObject,
+      'constructorA',
+      'get',
+    );
+    expect(spyOn).type.not.toBeCallableWith(
+      optionalSpiedObject,
+      'constructorA',
+      'set',
+    );
+
+    expect(spyOn(optionalSpiedObject, 'methodA')).type.toBe<
+      SpiedFunction<NonNullable<typeof optionalSpiedObject.methodA>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'methodB')).type.toBe<
+      SpiedFunction<typeof optionalSpiedObject.methodB>
+    >();
+
+    expect(spyOn).type.not.toBeCallableWith(
+      optionalSpiedObject,
+      'methodA',
+      'get',
+    );
+    expect(spyOn).type.not.toBeCallableWith(
+      optionalSpiedObject,
+      'methodA',
+      'set',
+    );
+
+    expect(spyOn(optionalSpiedObject, 'propertyA', 'get')).type.toBe<
+      SpiedGetter<NonNullable<typeof optionalSpiedObject.propertyA>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyA', 'set')).type.toBe<
+      SpiedSetter<NonNullable<typeof optionalSpiedObject.propertyA>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyB', 'get')).type.toBe<
+      SpiedGetter<NonNullable<typeof optionalSpiedObject.propertyB>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyB', 'set')).type.toBe<
+      SpiedSetter<NonNullable<typeof optionalSpiedObject.propertyB>>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyC', 'get')).type.toBe<
+      SpiedGetter<typeof optionalSpiedObject.propertyC>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyC', 'set')).type.toBe<
+      SpiedSetter<typeof optionalSpiedObject.propertyC>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyD', 'get')).type.toBe<
+      SpiedGetter<typeof optionalSpiedObject.propertyD>
+    >();
+    expect(spyOn(optionalSpiedObject, 'propertyD', 'set')).type.toBe<
+      SpiedSetter<typeof optionalSpiedObject.propertyD>
+    >();
+
+    expect(spyOn).type.not.toBeCallableWith(optionalSpiedObject, 'propertyA');
+    expect(spyOn).type.not.toBeCallableWith(optionalSpiedObject, 'propertyB');
+  });
+
+  test('handles properties of `prototype`', () => {
+    expect(
+      spyOn(Storage.prototype, 'setItem').mockImplementation(
+        (key: string, value: string) => {},
+      ),
+    ).type.toBe<SpiedFunction<(key: string, value: string) => void>>();
+
+    expect(
+      spyOn(Storage.prototype, 'setItem').mockImplementation,
+    ).type.not.toBeCallableWith((key: string, value: number) => {});
+  });
+});
+
+describe('jest.replaceProperty()', () => {
+  const replaceObject = {
+    method: () => {},
+    property: 1,
+  };
+
+  interface ComplexObject {
+    numberOrUndefined: number | undefined;
+    optionalString?: string;
+    multipleTypes: number | string | {foo: number} | null;
   }
-  methodB(a: string, b?: number) {
-    return;
+
+  const complexObject = {} as ComplexObject;
+
+  interface ObjectWithDynamicProperties {
+    [key: string]: boolean;
   }
-}
 
-interface OptionalInterface {
-  constructorA?: (new (one: string) => SomeClass) | undefined;
-  constructorB: new (one: string, two: boolean) => SomeClass;
+  const objectWithDynamicProperties = {} as ObjectWithDynamicProperties;
 
-  propertyA?: number | undefined;
-  propertyB?: number;
-  propertyC: number | undefined;
-  propertyD: string;
+  test('models typings of replaced property', () => {
+    expect(replaceProperty(replaceObject, 'property', 1)).type.toBe<
+      Replaced<number>
+    >();
+    expect(replaceProperty(replaceObject, 'method', () => {})).type.toBe<
+      Replaced<() => void>
+    >();
+    expect(
+      replaceProperty(replaceObject, 'property', 1).replaceValue(1).restore(),
+    ).type.toBe<void>();
 
-  methodA?: ((a: boolean) => void) | undefined;
-  methodB: (b: string) => boolean;
-}
+    expect(replaceProperty).type.not.toBeCallableWith(
+      replaceObject,
+      'invalid',
+      1,
+    );
+    expect(replaceProperty).type.not.toBeCallableWith(
+      replaceObject,
+      'property',
+      'not a number',
+    );
 
-const optionalSpiedObject = {} as OptionalInterface;
+    expect(
+      replaceProperty(replaceObject, 'property', 1).replaceValue,
+    ).type.not.toBeCallableWith('not a number');
 
-expectType<SpiedClass<NonNullable<typeof optionalSpiedObject.constructorA>>>(
-  spyOn(optionalSpiedObject, 'constructorA'),
-);
-expectType<SpiedClass<typeof optionalSpiedObject.constructorB>>(
-  spyOn(optionalSpiedObject, 'constructorB'),
-);
+    expect(
+      replaceProperty(complexObject, 'numberOrUndefined', undefined),
+    ).type.toBe<Replaced<number | undefined>>();
+    expect(replaceProperty(complexObject, 'numberOrUndefined', 1)).type.toBe<
+      Replaced<number | undefined>
+    >();
 
-expectError(spyOn(optionalSpiedObject, 'constructorA', 'get'));
-expectError(spyOn(optionalSpiedObject, 'constructorA', 'set'));
+    expect(replaceProperty).type.not.toBeCallableWith(
+      complexObject,
+      'numberOrUndefined',
+      'string is not valid TypeScript type',
+    );
 
-expectType<SpiedFunction<NonNullable<typeof optionalSpiedObject.methodA>>>(
-  spyOn(optionalSpiedObject, 'methodA'),
-);
-expectType<SpiedFunction<typeof optionalSpiedObject.methodB>>(
-  spyOn(optionalSpiedObject, 'methodB'),
-);
+    expect(replaceProperty(complexObject, 'optionalString', 'foo')).type.toBe<
+      Replaced<string | undefined>
+    >();
+    expect(
+      replaceProperty(complexObject, 'optionalString', undefined),
+    ).type.toBe<Replaced<string | undefined>>();
 
-expectError(spyOn(optionalSpiedObject, 'methodA', 'get'));
-expectError(spyOn(optionalSpiedObject, 'methodA', 'set'));
+    expect(
+      replaceProperty(objectWithDynamicProperties, 'dynamic prop 1', true),
+    ).type.toBe<Replaced<boolean>>();
+    expect(replaceProperty).type.not.toBeCallableWith(
+      objectWithDynamicProperties,
+      'dynamic prop 1',
+      undefined,
+    );
 
-expectType<SpiedGetter<NonNullable<typeof optionalSpiedObject.propertyA>>>(
-  spyOn(optionalSpiedObject, 'propertyA', 'get'),
-);
-expectType<SpiedSetter<NonNullable<typeof optionalSpiedObject.propertyA>>>(
-  spyOn(optionalSpiedObject, 'propertyA', 'set'),
-);
-expectType<SpiedGetter<NonNullable<typeof optionalSpiedObject.propertyB>>>(
-  spyOn(optionalSpiedObject, 'propertyB', 'get'),
-);
-expectType<SpiedSetter<NonNullable<typeof optionalSpiedObject.propertyB>>>(
-  spyOn(optionalSpiedObject, 'propertyB', 'set'),
-);
-expectType<SpiedGetter<typeof optionalSpiedObject.propertyC>>(
-  spyOn(optionalSpiedObject, 'propertyC', 'get'),
-);
-expectType<SpiedSetter<typeof optionalSpiedObject.propertyC>>(
-  spyOn(optionalSpiedObject, 'propertyC', 'set'),
-);
-expectType<SpiedGetter<typeof optionalSpiedObject.propertyD>>(
-  spyOn(optionalSpiedObject, 'propertyD', 'get'),
-);
-expectType<SpiedSetter<typeof optionalSpiedObject.propertyD>>(
-  spyOn(optionalSpiedObject, 'propertyD', 'set'),
-);
+    expect(replaceProperty).type.not.toBeCallableWith(
+      complexObject,
+      'not a property',
+      undefined,
+    );
 
-expectError(spyOn(optionalSpiedObject, 'propertyA'));
-expectError(spyOn(optionalSpiedObject, 'propertyB'));
-
-// properties of `prototype`
-
-expectType<SpiedFunction<(key: string, value: string) => void>>(
-  spyOn(Storage.prototype, 'setItem').mockImplementation(
-    (key: string, value: string) => {},
-  ),
-);
-
-expectError(
-  spyOn(Storage.prototype, 'setItem').mockImplementation(
-    (key: string, value: number) => {},
-  ),
-);
-
-// replaceProperty + Replaced
-
-const replaceObject = {
-  method: () => {},
-  property: 1,
-};
-
-expectType<Replaced<number>>(replaceProperty(replaceObject, 'property', 1));
-expectType<Replaced<() => void>>(
-  replaceProperty(replaceObject, 'method', () => {}),
-);
-expectType<void>(
-  replaceProperty(replaceObject, 'property', 1).replaceValue(1).restore(),
-);
-
-expectError(replaceProperty(replaceObject, 'invalid', 1));
-expectError(replaceProperty(replaceObject, 'property', 'not a number'));
-
-expectError(
-  replaceProperty(replaceObject, 'property', 1).replaceValue('not a number'),
-);
-
-interface ComplexObject {
-  numberOrUndefined: number | undefined;
-  optionalString?: string;
-  multipleTypes: number | string | {foo: number} | null;
-}
-declare const complexObject: ComplexObject;
-
-interface ObjectWithDynamicProperties {
-  [key: string]: boolean;
-}
-declare const objectWithDynamicProperties: ObjectWithDynamicProperties;
-
-// Resulting type should retain the original property type
-expectType<Replaced<number | undefined>>(
-  replaceProperty(complexObject, 'numberOrUndefined', undefined),
-);
-expectType<Replaced<number | undefined>>(
-  replaceProperty(complexObject, 'numberOrUndefined', 1),
-);
-
-expectError(
-  replaceProperty(
-    complexObject,
-    'numberOrUndefined',
-    'string is not valid TypeScript type',
-  ),
-);
-
-expectType<Replaced<string | undefined>>(
-  replaceProperty(complexObject, 'optionalString', 'foo'),
-);
-expectType<Replaced<string | undefined>>(
-  replaceProperty(complexObject, 'optionalString', undefined),
-);
-
-expectType<Replaced<boolean>>(
-  replaceProperty(objectWithDynamicProperties, 'dynamic prop 1', true),
-);
-expectError(
-  replaceProperty(objectWithDynamicProperties, 'dynamic prop 1', undefined),
-);
-
-expectError(replaceProperty(complexObject, 'not a property', undefined));
-
-expectType<Replaced<ComplexObject['multipleTypes']>>(
-  replaceProperty(complexObject, 'multipleTypes', 1)
-    .replaceValue('foo')
-    .replaceValue({foo: 1})
-    .replaceValue(null),
-);
+    expect(
+      replaceProperty(complexObject, 'multipleTypes', 1)
+        .replaceValue('foo')
+        .replaceValue({foo: 1})
+        .replaceValue(null),
+    ).type.toBe<Replaced<ComplexObject['multipleTypes']>>();
+  });
+});

@@ -144,11 +144,9 @@ Although the `.toBe` matcher **checks** referential identity, it **reports** a d
 
 ### `.toHaveBeenCalled()`
 
-Also under the alias: `.toBeCalled()`
+Use `.toHaveBeenCalled` to ensure that a mock function was called.
 
-Use `.toHaveBeenCalledWith` to ensure that a mock function was called with specific arguments. The arguments are checked with the same algorithm that `.toEqual` uses.
-
-For example, let's say you have a `drinkAll(drink, flavour)` function that takes a `drink` function and applies it to all available beverages. You might want to check that `drink` gets called for `'lemon'`, but not for `'octopus'`, because `'octopus'` flavour is really weird and why would anything be octopus-flavoured? You can do that with this test suite:
+For example, let's say you have a `drinkAll(drink, flavour)` function that takes a `drink` function and applies it to all available beverages. You might want to check that `drink` gets called. You can do that with this test suite:
 
 ```js
 function drinkAll(callback, flavour) {
@@ -174,8 +172,6 @@ describe('drinkAll', () => {
 
 ### `.toHaveBeenCalledTimes(number)`
 
-Also under the alias: `.toBeCalledTimes(number)`
-
 Use `.toHaveBeenCalledTimes` to ensure that a mock function got called exact number of times.
 
 For example, let's say you have a `drinkEach(drink, Array<flavor>)` function that takes a `drink` function and applies it to array of passed beverages. You might want to check that drink function was called exact number of times. You can do that with this test suite:
@@ -189,8 +185,6 @@ test('drinkEach drinks each drink', () => {
 ```
 
 ### `.toHaveBeenCalledWith(arg1, arg2, ...)`
-
-Also under the alias: `.toBeCalledWith()`
 
 Use `.toHaveBeenCalledWith` to ensure that a mock function was called with specific arguments. The arguments are checked with the same algorithm that `.toEqual` uses.
 
@@ -208,8 +202,6 @@ test('registration applies correctly to orange La Croix', () => {
 
 ### `.toHaveBeenLastCalledWith(arg1, arg2, ...)`
 
-Also under the alias: `.lastCalledWith(arg1, arg2, ...)`
-
 If you have a mock function, you can use `.toHaveBeenLastCalledWith` to test what arguments it was last called with. For example, let's say you have a `applyToAllFlavors(f)` function that applies `f` to a bunch of flavors, and you want to ensure that when you call it, the last flavor it operates on is `'mango'`. You can write:
 
 ```js
@@ -221,8 +213,6 @@ test('applying to all flavors does mango last', () => {
 ```
 
 ### `.toHaveBeenNthCalledWith(nthCall, arg1, arg2, ....)`
-
-Also under the alias: `.nthCalledWith(nthCall, arg1, arg2, ...)`
 
 If you have a mock function, you can use `.toHaveBeenNthCalledWith` to test what arguments it was nth called with. For example, let's say you have a `drinkEach(drink, Array<flavor>)` function that applies `f` to a bunch of flavors, and you want to ensure that when you call it, the first flavor it operates on is `'lemon'` and the second one is `'octopus'`. You can write:
 
@@ -243,8 +233,6 @@ The nth argument must be positive integer starting from 1.
 
 ### `.toHaveReturned()`
 
-Also under the alias: `.toReturn()`
-
 If you have a mock function, you can use `.toHaveReturned` to test that the mock function successfully returned (i.e., did not throw an error) at least one time. For example, let's say you have a mock `drink` that returns `true`. You can write:
 
 ```js
@@ -258,8 +246,6 @@ test('drinks returns', () => {
 ```
 
 ### `.toHaveReturnedTimes(number)`
-
-Also under the alias: `.toReturnTimes(number)`
 
 Use `.toHaveReturnedTimes` to ensure that a mock function returned successfully (i.e., did not throw an error) an exact number of times. Any calls to the mock function that throw an error are not counted toward the number of times the function returned.
 
@@ -278,8 +264,6 @@ test('drink returns twice', () => {
 
 ### `.toHaveReturnedWith(value)`
 
-Also under the alias: `.toReturnWith(value)`
-
 Use `.toHaveReturnedWith` to ensure that a mock function returned a specific value.
 
 For example, let's say you have a mock `drink` that returns the name of the beverage that was consumed. You can write:
@@ -296,8 +280,6 @@ test('drink returns La Croix', () => {
 ```
 
 ### `.toHaveLastReturnedWith(value)`
-
-Also under the alias: `.lastReturnedWith(value)`
 
 Use `.toHaveLastReturnedWith` to test the specific value that a mock function last returned. If the last call to the mock function threw an error, then this matcher will fail no matter what value you provided as the expected return value.
 
@@ -317,8 +299,6 @@ test('drink returns La Croix (Orange) last', () => {
 ```
 
 ### `.toHaveNthReturnedWith(nthCall, value)`
-
-Also under the alias: `.nthReturnedWith(nthCall, value)`
 
 Use `.toHaveNthReturnedWith` to test the specific value that a mock function returned for the nth call. If the nth call to the mock function threw an error, then this matcher will fail no matter what value you provided as the expected return value.
 
@@ -420,7 +400,7 @@ test('this house has my desired features', () => {
   expect(houseForSale).not.toHaveProperty(['kitchen', 'open']);
 
   // Referencing keys with dot in the key itself
-  expect(houseForSale).toHaveProperty(['ceiling.height'], 'tall');
+  expect(houseForSale).toHaveProperty(['ceiling.height'], 2);
 });
 ```
 
@@ -782,8 +762,6 @@ describe('the La Croix cans on my desk', () => {
 
 ### `.toThrow(error?)`
 
-Also under the alias: `.toThrowError(error?)`
-
 Use `.toThrow` to test that a function throws when it is called. For example, if we want to test that `drinkFlavor('octopus')` throws, because octopus flavor is too disgusting to drink, we could write:
 
 ```js
@@ -811,7 +789,7 @@ For example, let's say that `drinkFlavor` is coded like this:
 
 ```js
 function drinkFlavor(flavor) {
-  if (flavor == 'octopus') {
+  if (flavor === 'octopus') {
     throw new DisgustingFlavorError('yuck, octopus flavor');
   }
   // Do some other stuff
@@ -849,7 +827,7 @@ For example, let's say you have a `drinkFlavor` function that throws whenever th
 
 ```js
 function drinkFlavor(flavor) {
-  if (flavor == 'octopus') {
+  if (flavor === 'octopus') {
     throw new DisgustingFlavorError('yuck, octopus flavor');
   }
   // Do some other stuff
@@ -888,7 +866,7 @@ Check out the section on [Inline Snapshots](SnapshotTesting.md#inline-snapshots)
 
 ### `expect.anything()`
 
-`expect.anything()` matches anything but `null` or `undefined`. You can use it inside `toEqual` or `toBeCalledWith` instead of a literal value. For example, if you want to check that a mock function is called with a non-null argument:
+`expect.anything()` matches anything but `null` or `undefined`. You can use it inside `toEqual` or `toHaveBeenCalledWith` instead of a literal value. For example, if you want to check that a mock function is called with a non-null argument:
 
 ```js
 test('map calls its argument with a non-null argument', () => {
@@ -900,7 +878,7 @@ test('map calls its argument with a non-null argument', () => {
 
 ### `expect.any(constructor)`
 
-`expect.any(constructor)` matches anything that was created with the given constructor or if it's a primitive that is of the passed type. You can use it inside `toEqual` or `toBeCalledWith` instead of a literal value. For example, if you want to check that a mock function is called with a number:
+`expect.any(constructor)` matches anything that was created with the given constructor or if it's a primitive that is of the passed type. You can use it inside `toEqual` or `toHaveBeenCalledWith` instead of a literal value. For example, if you want to check that a mock function is called with a number:
 
 ```js
 class Cat {}
@@ -931,7 +909,7 @@ test('randocall calls its callback with a number', () => {
 
 You can use it instead of a literal value:
 
-- in `toEqual` or `toBeCalledWith`
+- in `toEqual` or `toHaveBeenCalledWith`
 - to match a property in `objectContaining` or `toMatchObject`
 
 ```js
@@ -977,6 +955,52 @@ describe('not.arrayContaining', () => {
       expect.not.arrayContaining(expected),
     );
   });
+});
+```
+
+### `expect.arrayOf(value)`
+
+`expect.arrayOf(value)` matches a received array whose elements match the provided value. This is useful for asserting that every item in an array satisfies a particular condition or type.
+
+**Example:**
+
+```js
+test('all elements in array are strings', () => {
+  expect(['apple', 'banana', 'cherry']).toEqual(
+    expect.arrayOf(expect.any(String)),
+  );
+});
+```
+
+This matcher is particularly useful for validating arrays containing complex structures:
+
+```js
+test('array of objects with specific properties', () => {
+  expect([
+    {id: 1, name: 'Alice'},
+    {id: 2, name: 'Bob'},
+  ]).toEqual(
+    expect.arrayOf(
+      expect.objectContaining({
+        id: expect.any(Number),
+        name: expect.any(String),
+      }),
+    ),
+  );
+});
+```
+
+### `expect.not.arrayOf(value)`
+
+`expect.not.arrayOf(value)` matches a received array where not all elements match the provided matcher.
+
+**Example:**
+
+```js
+test('not all elements in array are strings', () => {
+  expect(['apple', 123, 'cherry']).toEqual(
+    expect.not.arrayOf(expect.any(String)),
+  );
 });
 ```
 
@@ -1063,7 +1087,7 @@ describe('not.stringContaining', () => {
 
 You can use it instead of a literal value:
 
-- in `toEqual` or `toBeCalledWith`
+- in `toEqual` or `toHaveBeenCalledWith`
 - to match an element in `arrayContaining`
 - to match a property in `objectContaining` or `toMatchObject`
 
@@ -1186,10 +1210,10 @@ function areVolumesEqual(a, b) {
 
   if (isAVolume && isBVolume) {
     return a.equals(b);
-  } else if (isAVolume !== isBVolume) {
-    return false;
-  } else {
+  } else if (isAVolume === isBVolume) {
     return undefined;
+  } else {
+    return false;
   }
 }
 
@@ -1243,10 +1267,10 @@ function areVolumesEqual(a: unknown, b: unknown): boolean | undefined {
 
   if (isAVolume && isBVolume) {
     return a.equals(b);
-  } else if (isAVolume !== isBVolume) {
-    return false;
-  } else {
+  } else if (isAVolume === isBVolume) {
     return undefined;
+  } else {
+    return false;
   }
 }
 
@@ -1297,10 +1321,10 @@ function areAuthorEqual(a, b) {
   if (isAAuthor && isBAuthor) {
     // Authors are equal if they have the same name
     return a.name === b.name;
-  } else if (isAAuthor !== isBAuthor) {
-    return false;
-  } else {
+  } else if (isAAuthor === isBAuthor) {
     return undefined;
+  } else {
+    return false;
   }
 }
 
@@ -1315,10 +1339,10 @@ function areBooksEqual(a, b, customTesters) {
     return (
       a.name === b.name && this.equals(a.authors, b.authors, customTesters)
     );
-  } else if (isABook !== isBBook) {
-    return false;
-  } else {
+  } else if (isABook === isBBook) {
     return undefined;
+  } else {
+    return false;
   }
 }
 
@@ -1364,7 +1388,7 @@ function toBeWithinRange(actual, floor, ceiling) {
     typeof floor !== 'number' ||
     typeof ceiling !== 'number'
   ) {
-    throw new Error('These must be of type number!');
+    throw new TypeError('These must be of type number!');
   }
 
   const pass = actual >= floor && actual <= ceiling;
@@ -1439,7 +1463,7 @@ const toBeWithinRange: MatcherFunction<[floor: unknown, ceiling: unknown]> =
       typeof floor !== 'number' ||
       typeof ceiling !== 'number'
     ) {
-      throw new Error('These must be of type number!');
+      throw new TypeError('These must be of type number!');
     }
 
     const pass = actual >= floor && actual <= ceiling;
@@ -1505,7 +1529,7 @@ The type declaration of the matcher can live in a `.d.ts` file or in an imported
 
 :::tip
 
-Instead of importing `toBeWithinRange` module to the test file, you can enable the matcher for all tests by moving the `expect.extend` call to a [`setupFilesAfterEnv`](Configuration.md/#setupfilesafterenv-array) script:
+Instead of importing `toBeWithinRange` module to the test file, you can enable the matcher for all tests by moving the `expect.extend` call to a [`setupFilesAfterEnv`](Configuration.md#setupfilesafterenv-array) script:
 
 ```js
 import {expect} from '@jest/globals';
@@ -1527,7 +1551,7 @@ expect.extend({
 expect.extend({
   async toBeDivisibleByExternalValue(received) {
     const externalValue = await getExternalValueFromRemoteSource();
-    const pass = received % externalValue == 0;
+    const pass = received % externalValue === 0;
     if (pass) {
       return {
         message: () =>
@@ -1591,7 +1615,7 @@ A boolean to let you know this matcher was called with an `expand` option. When 
 
 #### `this.utils`
 
-There are a number of helpful tools exposed on `this.utils` primarily consisting of the exports from [`jest-matcher-utils`](https://github.com/facebook/jest/tree/main/packages/jest-matcher-utils).
+There are a number of helpful tools exposed on `this.utils` primarily consisting of the exports from [`jest-matcher-utils`](https://github.com/jestjs/jest/tree/main/packages/jest-matcher-utils).
 
 The most useful ones are `matcherHint`, `printExpected` and `printReceived` to format the error messages nicely. For example, take a look at the implementation for the `toBe` matcher:
 
@@ -1664,7 +1688,7 @@ expect.extend({
   toMatchTrimmedSnapshot(received, length) {
     return toMatchSnapshot.call(
       this,
-      received.substring(0, length),
+      received.slice(0, length),
       'toMatchTrimmedSnapshot',
     );
   },
@@ -1688,7 +1712,7 @@ const {toMatchInlineSnapshot} = require('jest-snapshot');
 
 expect.extend({
   toMatchTrimmedInlineSnapshot(received, ...rest) {
-    return toMatchInlineSnapshot.call(this, received.substring(0, 10), ...rest);
+    return toMatchInlineSnapshot.call(this, received.slice(0, 10), ...rest);
   },
 });
 
@@ -1778,4 +1802,144 @@ it('transitions as expected', () => {
   transition();
   expect(state).toMatchStateInlineSnapshot(`"done"`);
 });
+```
+
+## Matcher State
+
+### `expect.getState()`
+
+Returns the current state of the `expect` module. This is useful for accessing test metadata inside `beforeEach`, `afterEach`, custom matchers, or any code that runs during a test.
+
+The state object includes the following commonly used properties (among others). Note that these fields may be `undefined` when called outside an active test:
+
+#### `currentTestName`
+
+The full name of the currently running test, including all parent `describe` block names separated by a space. For example:
+
+```js title="myTest.test.js"
+describe('my suite', () => {
+  describe('nested', () => {
+    beforeEach(() => {
+      const {currentTestName} = expect.getState();
+      console.log(currentTestName); // 'my suite nested my test'
+    });
+
+    test('my test', () => {
+      const {currentTestName} = expect.getState();
+      console.log(currentTestName); // 'my suite nested my test'
+    });
+  });
+});
+```
+
+```ts title="myTest.test.ts"
+describe('my suite', () => {
+  describe('nested', () => {
+    beforeEach(() => {
+      const {currentTestName} = expect.getState();
+      console.log(currentTestName); // 'my suite nested my test'
+    });
+
+    test('my test', () => {
+      const {currentTestName} = expect.getState();
+      console.log(currentTestName); // 'my suite nested my test'
+    });
+  });
+});
+```
+
+This is particularly useful for:
+
+- Naming screenshots in visual regression testing
+- Loading test-specific fixtures
+- Logging and debugging
+
+#### `testPath`
+
+The absolute path to the test file being executed.
+
+```js title="myTest.test.js"
+beforeEach(() => {
+  const {testPath} = expect.getState();
+  console.log(testPath); // '/path/to/project/myTest.test.js'
+});
+```
+
+```ts title="myTest.test.ts"
+beforeEach(() => {
+  const {testPath} = expect.getState();
+  console.log(testPath); // '/path/to/project/myTest.test.ts'
+});
+```
+
+#### `expand`
+
+A boolean indicating whether Jest was invoked with the `--expand` flag. This is the same value available as `this.expand` inside custom matchers.
+
+### `expect.setState(state)`
+
+Merges the provided object into the current matcher state. This is primarily used internally and inside custom matchers.
+
+```js title="myTest.test.js"
+expect.setState({key: 'value'});
+const {key} = expect.getState();
+console.log(key); // 'value'
+```
+
+```ts title="custom.d.ts"
+// To use custom properties with setState in TypeScript,
+// augment the MatcherState interface:
+declare module 'expect' {
+  interface MatcherState {
+    key?: string;
+  }
+}
+```
+
+```ts title="myTest.test.ts"
+expect.setState({key: 'value'});
+const {key} = expect.getState();
+console.log(key); // 'value'
+```
+
+:::caution
+
+Only set custom properties. Overwriting built-in state properties (such as `currentTestName`) may cause unexpected behavior.
+
+:::
+
+## Serializable properties
+
+### `SERIALIZABLE_PROPERTIES`
+
+Serializable properties is a set of properties that are considered serializable by Jest. This set is used to determine if a property should be serializable or not. If an object has a property that is not in this set, it is considered not serializable and will not be printed in error messages.
+
+You can add your own properties to this set to make sure that your objects are printed correctly. For example, if you have a `Volume` class, and you want to make sure that only the `amount` and `unit` properties are printed, you can add it to `SERIALIZABLE_PROPERTIES`:
+
+```js
+import {SERIALIZABLE_PROPERTIES} from 'jest-matcher-utils';
+
+class Volume {
+  constructor(amount, unit) {
+    this.amount = amount;
+    this.unit = unit;
+  }
+
+  get label() {
+    throw new Error('Not implemented');
+  }
+}
+
+Volume.prototype[SERIALIZABLE_PROPERTIES] = ['amount', 'unit'];
+
+expect(new Volume(1, 'L')).toEqual(new Volume(10, 'L'));
+```
+
+This will print only the `amount` and `unit` properties in the error message, ignoring the `label` property.
+
+```bash
+expect(received).toEqual(expected) // deep equality
+
+Expected: {"amount": 10, "unit": "L"}
+Received: {"amount": 1, "unit": "L"}
 ```

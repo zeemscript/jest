@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import chalk = require('chalk');
-import stripAnsi = require('strip-ansi');
+import {stripVTControlCharacters as stripAnsi} from 'util';
+import chalk from 'chalk';
 import {alignedAnsiStyleSerializer} from '@jest/test-utils';
 import {diff} from '../';
 import {NO_DIFF_MESSAGE} from '../constants';
@@ -47,13 +47,13 @@ const elementSymbol = Symbol.for('react.element');
 expect.addSnapshotSerializer(alignedAnsiStyleSerializer);
 
 describe('different types', () => {
-  [
+  for (const values of [
     [1, 'a', 'number', 'string'],
     [{}, 'a', 'object', 'string'],
     [[], 2, 'array', 'number'],
     [null, undefined, 'null', 'undefined'],
     [() => {}, 3, 'function', 'number'],
-  ].forEach(values => {
+  ]) {
     const a = values[0];
     const b = values[1];
     const typeA = values[2];
@@ -65,11 +65,11 @@ describe('different types', () => {
           `Expected ${String(typeA)} but received ${String(typeB)}.`,
       );
     });
-  });
+  }
 });
 
 describe('no visual difference', () => {
-  [
+  for (const values of [
     ['a', 'a'],
     [{}, {}],
     [[], []],
@@ -78,21 +78,23 @@ describe('no visual difference', () => {
       [1, 2],
     ],
     [11, 11],
+    /* eslint-disable unicorn/prefer-number-properties */
     [NaN, NaN],
     [Number.NaN, NaN],
+    /* eslint-enable */
     [() => {}, () => {}],
     [null, null],
     [undefined, undefined],
     [false, false],
     [{a: 1}, {a: 1}],
     [{a: {b: 5}}, {a: {b: 5}}],
-  ].forEach(values => {
+  ]) {
     test(`'${JSON.stringify(values[0])}' and '${JSON.stringify(
       values[1],
     )}'`, () => {
       expect(stripped(values[0], values[1])).toBe(NO_DIFF_MESSAGE);
     });
-  });
+  }
 
   test('Map key order should be irrelevant', () => {
     const arg1 = new Map([
